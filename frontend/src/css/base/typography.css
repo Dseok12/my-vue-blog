@@ -1,0 +1,42 @@
+/* 문서 단위 타이포 스케일 */
+.t-title {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-text);
+  letter-spacing: -0.02em;
+}
+
+.t-heading {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.t-subheading {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.t-body {
+  font-size: var(--font-size-md);
+  color: var(--color-text-sub);
+}
+
+.t-caption {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 600px) {
+  .t-title {
+    font-size: var(--font-size-xl);
+  }
+
+  .t-heading {
+    font-size: var(--font-size-lg);
+  }
+}

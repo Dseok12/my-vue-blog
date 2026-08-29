@@ -1,0 +1,8 @@
+/* BaseInput 전용 - 공통 스타일은 css/base/form.css 에 있다. */
+.field__control[type='date'] {
+  min-height: 42px;
+}
+
+.field__control[type='search']::-webkit-search-cancel-button {
+  cursor: pointer;
+}

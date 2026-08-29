@@ -1,0 +1,7 @@
+/* BaseTextarea 전용 - 공통 스타일은 css/base/form.css 에 있다. */
+.field__control--textarea {
+  min-height: 220px;
+  resize: vertical;
+  line-height: var(--line-height-base);
+  font-family: inherit;
+}

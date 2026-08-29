@@ -1,0 +1,74 @@
+.filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.filter__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.filter__chip {
+  height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-sub);
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.filter__chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.filter__chip--on {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-text-invert);
+  font-weight: 600;
+}
+
+.filter__search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.filter__input {
+  width: 200px;
+  height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface);
+  font-size: var(--font-size-sm);
+}
+
+.filter__input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+@media (max-width: 720px) {
+  .filter__search {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .filter__input {
+    flex: 1 1 auto;
+    width: auto;
+  }
+}

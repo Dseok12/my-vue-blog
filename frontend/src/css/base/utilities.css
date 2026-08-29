@@ -1,0 +1,69 @@
+/* 공용 유틸리티 - 반복되는 소량의 스타일만 담는다 */
+.u-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.u-container {
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 0 var(--space-5);
+}
+
+.u-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.u-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.u-spacer {
+  flex: 1 1 auto;
+}
+
+.u-text-muted {
+  color: var(--color-text-muted);
+}
+
+.u-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.u-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 600px) {
+  .u-container {
+    padding: 0 var(--space-4);
+  }
+}
+
+/* 라우터 전환 효과 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--transition-fast);
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}

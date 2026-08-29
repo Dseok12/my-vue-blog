@@ -1,0 +1,86 @@
+/* 왼쪽 하단 토글 버튼 - 항상 화면에 떠 있다. */
+.sidebar__toggle {
+  position: fixed;
+  left: var(--space-5);
+  bottom: var(--space-5);
+  z-index: calc(var(--z-sidebar) + 2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 44px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-full);
+  background-color: var(--color-primary);
+  color: var(--color-text-invert);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+  transition: background-color var(--transition-fast);
+}
+
+.sidebar__toggle:hover {
+  background-color: var(--color-primary-strong);
+}
+
+.sidebar {
+  position: fixed;
+  top: var(--header-height);
+  bottom: 0;
+  left: 0;
+  z-index: var(--z-sidebar);
+  width: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-5) 84px;
+  background-color: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  overflow-y: auto;
+  transition: transform var(--transition-base);
+}
+
+.sidebar--closed {
+  transform: translateX(-100%);
+}
+
+.sidebar__title {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-text-sub);
+}
+
+.sidebar__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sidebar__hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.sidebar__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-sidebar) - 1);
+  background-color: var(--color-overlay);
+}
+
+@media (max-width: 1023px) {
+  .sidebar {
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+@media (max-width: 600px) {
+  .sidebar {
+    width: min(88vw, var(--sidebar-width));
+  }
+
+  .sidebar__toggle {
+    left: var(--space-4);
+    bottom: var(--space-4);
+  }
+}

@@ -1,0 +1,15 @@
+.auth-layout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: var(--space-8) var(--space-4);
+  background:
+    radial-gradient(circle at 15% 15%, var(--color-primary-soft), transparent 45%),
+    var(--color-bg);
+}
+
+.auth-layout__inner {
+  width: 100%;
+  max-width: 400px;
+}

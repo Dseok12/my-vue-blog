@@ -1,0 +1,31 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.app__body {
+  flex: 1 1 auto;
+  display: flex;
+  position: relative;
+}
+
+.app__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--space-8) 0 var(--space-12);
+  transition: padding-left var(--transition-base);
+}
+
+/* 캘린더가 펼쳐지면 본문을 오른쪽으로 밀어 준다. (넓은 화면에서만) */
+@media (min-width: 1024px) {
+  .app__main--shifted {
+    padding-left: var(--sidebar-width);
+  }
+}
+
+@media (max-width: 600px) {
+  .app__main {
+    padding: var(--space-5) 0 var(--space-12);
+  }
+}
