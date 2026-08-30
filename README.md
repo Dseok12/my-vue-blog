@@ -25,3 +25,25 @@
 - DB : MySQL
 
 ---
+
+## 실행 방법
+
+```bash
+# 1) 백엔드 (http://localhost:4000)
+cd backend
+npm install
+cp .env.example .env        # MySQL 접속 정보와 JWT_SECRET 을 채운다
+npm run db:migrate          # 데이터베이스 + 테이블 생성
+npm run db:seed             # 예시 데이터 (선택)
+npm run dev
+
+# 2) 프론트엔드 (http://localhost:3000)
+cd frontend
+npm install
+npm run dev
+```
+
+실제 백엔드를 사용하려면 `frontend/.env` 에서 `VITE_USE_MOCK=false` 로 바꾼다.
+(`true` 로 두면 백엔드 없이 브라우저 저장소만으로 동작한다.)
+
+자세한 API 규격은 [backend/README.md](backend/README.md) 를 참고한다.

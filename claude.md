@@ -7,7 +7,7 @@
 - css폴더 디렉토리는 frontend/src/css/아래에 만들되 `frontend/src/css/component`, `frontend/src/css/layouts`와 같이 구분을 명확히 한다.
 - class 명명 규칙은 BEM형식을 따른다. 다만 웬만하면 4단어 이하로 작성한다.
 - css의 파일 이름은 컴포넌트의 이름과 동일하게 작성하여 파일을 만든다.
-- 반응형 웹으로 만든다.
+- 모바일 반응형 웹으로 만든다.
 
 ---
 
