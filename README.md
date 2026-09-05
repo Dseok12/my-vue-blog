@@ -26,6 +26,17 @@
 
 ---
 
+## 학습 문서
+
+이 프로젝트를 교재 삼아 정리한 문서입니다. 코드와 문서가 서로를 가리키도록 맞춰 두었습니다.
+
+| 문서 | 내용 |
+| --- | --- |
+| [Study_frontend.md](Study_frontend.md) | Vue 3 — 컴포넌트, 라우터, Pinia, CSS 설계까지 단계별 |
+| [Study_backend.md](Study_backend.md) | Node.js + Express + MySQL — 미들웨어, SQL, 인증, 배포까지 단계별 |
+
+---
+
 ## 프로젝트 구성
 
 | 폴더 | 설명 | 주소 |
