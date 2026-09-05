@@ -1,0 +1,139 @@
+/* 비회원 랜딩의 소개 패널 */
+.intro {
+  text-align: center;
+}
+
+.intro__badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto var(--space-4);
+  font-size: 30px;
+  line-height: 1;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: linear-gradient(140deg, var(--color-primary-soft), var(--color-surface));
+  box-shadow: var(--shadow-sm);
+  animation: intro-float 3.4s ease-in-out infinite;
+}
+
+.intro__title {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+
+.intro__lead {
+  margin-top: var(--space-3);
+  font-size: var(--font-size-md);
+  line-height: 1.7;
+  color: var(--color-text-sub);
+}
+
+.intro__list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+
+.intro__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--font-size-sm);
+}
+
+.intro__emoji {
+  font-size: var(--font-size-lg);
+  line-height: 1;
+}
+
+.intro__label {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* 좁은 화면에서는 이모지와 이름만 보여 간결하게 유지한다. */
+.intro__desc {
+  display: none;
+  color: var(--color-text-muted);
+}
+
+.intro__note {
+  margin-top: var(--space-5);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+@keyframes intro-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+/* 넓은 화면 : 로그인 카드 옆에서 왼쪽 정렬로 펼친다. */
+@media (min-width: 900px) {
+  .intro {
+    text-align: left;
+  }
+
+  .intro__badge {
+    margin-left: 0;
+  }
+
+  .intro__list {
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .intro__item {
+    padding: var(--space-3) var(--space-5);
+  }
+
+  .intro__desc {
+    display: inline;
+  }
+}
+
+@media (max-width: 480px) {
+  .intro__badge {
+    width: 56px;
+    height: 56px;
+    font-size: 26px;
+  }
+
+  .intro__title {
+    font-size: var(--font-size-xl);
+  }
+
+  .intro__lead {
+    font-size: var(--font-size-sm);
+  }
+
+  .intro__lead br {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro__badge {
+    animation: none;
+  }
+}

@@ -1,3 +1,17 @@
+/* 비회원 랜딩 : 좁은 화면은 소개 → 로그인 순서로 쌓고, 넓은 화면은 나란히 놓는다. */
+.login {
+  display: grid;
+  gap: var(--space-8);
+}
+
+@media (min-width: 900px) {
+  .login {
+    grid-template-columns: 1fr 400px;
+    gap: var(--space-12);
+    align-items: center;
+  }
+}
+
 .login__form {
   display: flex;
   flex-direction: column;

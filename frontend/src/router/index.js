@@ -7,13 +7,15 @@ import { useAuthStore } from '@/stores/auth'
  * meta.requiresAuth : 로그인한 회원만 볼 수 있는 화면
  * meta.guestOnly    : 비회원만 볼 수 있는 화면(로그인/회원가입)
  * meta.layout       : 'default' | 'auth'
+ * meta.wide         : auth 레이아웃을 넓게 쓸지 (소개가 함께 있는 로그인 화면)
  */
 const routes = [
   {
     path: '/login',
     name: 'login',
     component: () => import('@/views/LoginView.vue'),
-    meta: { guestOnly: true, layout: 'auth', title: '로그인' },
+    // wide: 소개 패널과 로그인 카드를 나란히 놓기 위해 넓은 레이아웃을 쓴다.
+    meta: { guestOnly: true, layout: 'auth', wide: true, title: '로그인' },
   },
   {
     path: '/signup',
