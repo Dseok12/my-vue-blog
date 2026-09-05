@@ -18,8 +18,13 @@ export default defineConfig({
     strictPort: true,
     open: false,
     proxy: {
-      // 백엔드(node.js) 준비 후 target 포트만 바꾸면 된다.
+      // 백엔드(backend/) 는 4000 포트에서 실행한다. 포트를 바꾸면 여기만 고치면 된다.
       '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
+      // 업로드한 이미지 파일도 백엔드가 내려 준다.
+      '/uploads': {
         target: 'http://localhost:4000',
         changeOrigin: true,
       },

@@ -1,0 +1,9 @@
+node_modules
+.env
+.env.example
+.DS_Store
+*.log
+
+# 업로드된 이미지는 저장소에 올리지 않는다. (폴더 구조만 유지)
+uploads/*
+!uploads/.gitkeep
