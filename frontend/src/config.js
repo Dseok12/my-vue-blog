@@ -44,6 +44,22 @@ export const VISIBILITY_OPTIONS = [
   { value: 'public', label: '공개', description: '다른 회원에게 공유됩니다.' },
 ]
 
+/** 게시물 신고 사유 (백엔드 REPORT_REASONS 와 같은 목록) */
+export const REPORT_REASONS = [
+  { value: 'obscene', label: '음란성' },
+  { value: 'defamation', label: '비방' },
+  { value: 'political', label: '정치적 게시물' },
+  { value: 'violent', label: '잔인한 게시물' },
+  { value: 'scam', label: '사기' },
+  { value: 'threat', label: '협박' },
+  { value: 'illegal', label: '불법거래' },
+  { value: 'etc', label: '기타' },
+]
+
+export function getReportReasonLabel(value) {
+  return REPORT_REASONS.find((item) => item.value === value)?.label || value
+}
+
 export const STORAGE_KEYS = {
   token: 'diary.auth.token',
   sidebar: 'diary.ui.sidebar',

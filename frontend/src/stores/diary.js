@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 
-import { diaries as diaryApi } from '@/api'
+import { diaries as diaryApi, reports as reportApi } from '@/api'
 import { parseDateKey, todayKey } from '@/utils/date'
 
 /** 목록 필터의 초기값 */
@@ -122,6 +122,14 @@ export const useDiaryStore = defineStore('diary', () => {
     return liked
   }
 
+  /** 게시물을 신고한다. 신고하면 자동으로 가림 처리되어 목록/피드에서 사라진다. */
+  async function report(id, payload) {
+    await reportApi.create(id, payload)
+    items.value = items.value.filter((item) => item.id !== id)
+    feedItems.value = feedItems.value.filter((item) => item.id !== id)
+    if (current.value?.id === id) current.value = { ...current.value, isHidden: true }
+  }
+
   function clearCurrent() {
     current.value = null
   }
@@ -146,6 +154,7 @@ export const useDiaryStore = defineStore('diary', () => {
     update,
     remove,
     toggleLike,
+    report,
     clearCurrent,
   }
 })

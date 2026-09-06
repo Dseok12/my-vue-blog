@@ -6,9 +6,11 @@ import { useRoute, useRouter } from 'vue-router'
 import BaseButton from '@/components/common/BaseButton.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import LoadingBlock from '@/components/common/LoadingBlock.vue'
+import NicknameLink from '@/components/common/NicknameLink.vue'
 import CommentSection from '@/components/comment/CommentSection.vue'
 import DiaryMeta from '@/components/diary/DiaryMeta.vue'
 import LikeButton from '@/components/diary/LikeButton.vue'
+import ReportModal from '@/components/diary/ReportModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDiaryStore } from '@/stores/diary'
 import { useUiStore } from '@/stores/ui'
@@ -24,9 +26,13 @@ const { current, loading, error } = storeToRefs(diaryStore)
 
 const removing = ref(false)
 const confirmOpen = ref(false)
+const reportOpen = ref(false)
+const reporting = ref(false)
 
 const isMine = computed(() => current.value?.authorId === authStore.user?.id)
 const isPublic = computed(() => current.value?.visibility === 'public')
+const isHidden = computed(() => Boolean(current.value?.isHidden))
+const canReport = computed(() => isPublic.value && !isMine.value && !isHidden.value)
 
 watch(
   () => route.params.id,
@@ -55,6 +61,20 @@ async function onRemove() {
     confirmOpen.value = false
   }
 }
+
+async function onReport(payload) {
+  reporting.value = true
+  try {
+    await diaryStore.report(String(route.params.id), payload)
+    reportOpen.value = false
+    uiStore.notify.success('신고가 접수되었습니다. 검토 후 조치됩니다.')
+    router.push({ name: 'feed' })
+  } catch (err) {
+    uiStore.notify.error(err.message)
+  } finally {
+    reporting.value = false
+  }
+}
 </script>
 
 <template>
@@ -66,11 +86,16 @@ async function onRemove() {
     <p v-else-if="error && !current" class="detail__error">{{ error }}</p>
 
     <template v-else-if="current">
+      <p v-if="isHidden && isMine" class="detail__notice">
+        신고가 접수되어 이 글은 다른 회원에게 가려진 상태입니다. 관리자 검토 후 해제될 수 있습니다.
+      </p>
+
       <article class="detail__paper">
         <DiaryMeta :diary="current" :show-author="!isMine" />
         <h1 class="detail__title">{{ current.title }}</h1>
         <p class="detail__byline">
-          {{ current.author.nickname }} · {{ formatDateTime(current.createdAt) }}
+          <NicknameLink :user-id="current.author.id" :nickname="current.author.nickname" />
+          · {{ formatDateTime(current.createdAt) }}
         </p>
 
         <p class="detail__content">{{ current.content }}</p>
@@ -86,7 +111,7 @@ async function onRemove() {
         </div>
 
         <div class="detail__bar">
-          <LikeButton v-if="isPublic" :diary="current" />
+          <LikeButton v-if="isPublic && !isHidden" :diary="current" />
           <span class="detail__spacer"></span>
           <template v-if="isMine">
             <BaseButton
@@ -98,6 +123,14 @@ async function onRemove() {
             </BaseButton>
             <BaseButton size="sm" variant="danger" @click="confirmOpen = true">삭제</BaseButton>
           </template>
+          <BaseButton
+            v-else-if="canReport"
+            size="sm"
+            variant="ghost"
+            @click="reportOpen = true"
+          >
+            신고
+          </BaseButton>
         </div>
       </article>
 
@@ -113,6 +146,13 @@ async function onRemove() {
       :loading="removing"
       @confirm="onRemove"
       @cancel="confirmOpen = false"
+    />
+
+    <ReportModal
+      :open="reportOpen"
+      :submitting="reporting"
+      @submit="onReport"
+      @cancel="reportOpen = false"
     />
   </div>
 </template>

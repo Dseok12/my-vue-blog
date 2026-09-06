@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
-import { auth as authApi } from '@/api'
+import { auth as authApi, users as usersApi } from '@/api'
 import { STORAGE_KEYS } from '@/config'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -14,6 +14,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isLoggedIn = computed(() => Boolean(user.value))
   const nickname = computed(() => user.value?.nickname || '')
+  const isAdmin = computed(() => Boolean(user.value?.isAdmin))
 
   function saveSession(payload) {
     user.value = payload.user
@@ -81,6 +82,22 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  /** 마이페이지에서 닉네임/비밀번호를 바꾼다. 성공하면 true. */
+  async function updateProfile(payload) {
+    loading.value = true
+    error.value = ''
+    try {
+      const { user: updated } = await usersApi.updateMe(payload)
+      user.value = updated
+      return true
+    } catch (err) {
+      error.value = err.message
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
   function resetError() {
     error.value = ''
   }
@@ -92,10 +109,12 @@ export const useAuthStore = defineStore('auth', () => {
     error,
     isLoggedIn,
     nickname,
+    isAdmin,
     restore,
     login,
     signup,
     logout,
+    updateProfile,
     resetError,
     clearSession,
   }

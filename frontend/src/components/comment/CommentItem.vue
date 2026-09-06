@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 
+import NicknameLink from '@/components/common/NicknameLink.vue'
 import { useAuthStore } from '@/stores/auth'
 import { fromNow } from '@/utils/date'
 import '@/css/components/CommentItem.css'
@@ -23,7 +24,11 @@ const isDiaryAuthor = computed(() => props.comment.authorId === props.diaryAutho
 <template>
   <div class="comment" :class="{ 'comment--reply': reply }">
     <div class="comment__head">
-      <span class="comment__author">{{ comment.author.nickname }}</span>
+      <NicknameLink
+        class="comment__author"
+        :user-id="comment.author.id"
+        :nickname="comment.author.nickname"
+      />
       <span v-if="isDiaryAuthor" class="comment__badge">작성자</span>
       <span>{{ fromNow(comment.createdAt) }}</span>
     </div>

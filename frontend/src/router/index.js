@@ -54,6 +54,18 @@ const routes = [
     meta: { requiresAuth: true, title: '공개 다이어리' },
   },
   {
+    path: '/users/:id',
+    name: 'user-page',
+    component: () => import('@/views/MyPageView.vue'),
+    meta: { requiresAuth: true, title: '마이페이지' },
+  },
+  {
+    path: '/admin',
+    name: 'admin',
+    component: () => import('@/views/AdminView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: '신고 관리' },
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/NotFoundView.vue'),
@@ -76,6 +88,10 @@ router.beforeEach(async (to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
   if (to.meta.guestOnly && authStore.isLoggedIn) {
+    return { name: 'diary-list' }
+  }
+  // 관리자 전용 화면은 관리자만 들어갈 수 있다.
+  if (to.meta.requiresAdmin && !authStore.isAdmin) {
     return { name: 'diary-list' }
   }
   return true

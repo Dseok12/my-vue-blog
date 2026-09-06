@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 
+import NicknameLink from '@/components/common/NicknameLink.vue'
 import { formatDate } from '@/utils/date'
 import { getCategoryLabel, getMoodLabel, getVisibilityLabel } from '@/utils/diary'
 import '@/css/components/DiaryMeta.css'
@@ -21,6 +22,9 @@ const visibilityLabel = computed(() => getVisibilityLabel(props.diary.visibility
     <span class="meta__tag meta__tag--category">{{ getCategoryLabel(diary.category) }}</span>
     <span v-if="moodLabel" class="meta__tag">{{ moodLabel }}</span>
     <span class="meta__tag" :class="`meta__tag--${diary.visibility}`">{{ visibilityLabel }}</span>
-    <span v-if="showAuthor" class="meta__author">by {{ diary.author.nickname }}</span>
+    <span v-if="diary.isHidden" class="meta__tag meta__tag--hidden">가림 처리됨</span>
+    <span v-if="showAuthor" class="meta__author">
+      by <NicknameLink :user-id="diary.author.id" :nickname="diary.author.nickname" />
+    </span>
   </div>
 </template>

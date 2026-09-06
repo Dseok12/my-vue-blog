@@ -5,7 +5,7 @@
 import { ApiError } from '../client'
 import { toDateKey, todayKey } from '@/utils/date'
 
-const STORAGE_KEY = 'diary.mock.db.v1'
+const STORAGE_KEY = 'diary.mock.db.v2'
 
 /** 오늘(KST)로부터 days 만큼 이동한 날짜 키 */
 function shiftDateKey(days) {
@@ -36,6 +36,13 @@ function createSeed() {
         password: 'haru1234',
         nickname: '하루',
         createdAt: shiftIso(-20),
+      },
+      {
+        id: 'u3',
+        email: 'admin@diary.test',
+        password: 'admin1234',
+        nickname: '지기',
+        createdAt: shiftIso(-40),
       },
     ],
     diaries: [
@@ -114,6 +121,7 @@ function createSeed() {
       },
     ],
     likes: [{ diaryId: 'd2', userId: 'u2' }],
+    reports: [],
     sessions: {},
   }
 }

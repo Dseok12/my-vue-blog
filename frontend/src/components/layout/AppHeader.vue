@@ -12,10 +12,14 @@ const router = useRouter()
 const authStore = useAuthStore()
 const uiStore = useUiStore()
 
-const navigations = [
-  { name: 'diary-list', label: '내 다이어리' },
-  { name: 'feed', label: '공개 다이어리' },
-]
+const navigations = computed(() => {
+  const items = [
+    { name: 'diary-list', label: '내 다이어리' },
+    { name: 'feed', label: '공개 다이어리' },
+  ]
+  if (authStore.isAdmin) items.push({ name: 'admin', label: '신고 관리' })
+  return items
+})
 
 const currentName = computed(() => route.name)
 
@@ -47,7 +51,13 @@ async function onLogout() {
       </nav>
 
       <div class="header__actions">
-        <span class="header__user">{{ authStore.nickname }} 님</span>
+        <router-link
+          v-if="authStore.user"
+          class="header__user"
+          :to="{ name: 'user-page', params: { id: authStore.user.id } }"
+        >
+          {{ authStore.nickname }} 님
+        </router-link>
         <BaseButton size="sm" @click="router.push({ name: 'diary-create' })">글쓰기</BaseButton>
         <BaseButton size="sm" variant="ghost" @click="onLogout">로그아웃</BaseButton>
       </div>

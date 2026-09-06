@@ -11,6 +11,12 @@ export const auth = {
   logout: () => client.post('/auth/logout'),
 }
 
+export const users = {
+  profile: (id) => client.get('/users/' + id),
+  diaries: (id, params) => client.get('/users/' + id + '/diaries', { params }),
+  updateMe: (payload) => client.patch('/users/me', payload),
+}
+
 export const diaries = {
   listMine: (params) => client.get('/diaries', { params }),
   listFeed: (params) => client.get('/diaries/feed', { params }),
@@ -27,6 +33,17 @@ export const comments = {
   create: (diaryId, payload) => client.post('/diaries/' + diaryId + '/comments', payload),
   remove: (diaryId, commentId) =>
     client.delete('/diaries/' + diaryId + '/comments/' + commentId),
+}
+
+export const reports = {
+  create: (diaryId, payload) => client.post('/diaries/' + diaryId + '/reports', payload),
+}
+
+export const admin = {
+  listReports: (params) => client.get('/admin/reports', { params }),
+  unhideDiary: (diaryId) => client.post('/admin/diaries/' + diaryId + '/unhide'),
+  hideDiary: (diaryId) => client.post('/admin/diaries/' + diaryId + '/hide'),
+  dismissReport: (reportId) => client.post('/admin/reports/' + reportId + '/dismiss'),
 }
 
 export const uploads = {

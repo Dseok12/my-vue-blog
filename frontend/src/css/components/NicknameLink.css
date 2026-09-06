@@ -1,0 +1,15 @@
+.nickname-link {
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted transparent;
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.nickname-link:hover,
+.nickname-link:focus-visible {
+  color: var(--color-primary);
+  border-bottom-color: currentColor;
+}

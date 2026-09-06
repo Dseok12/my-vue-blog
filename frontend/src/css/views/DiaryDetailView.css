@@ -79,6 +79,15 @@
   text-align: center;
 }
 
+.detail__notice {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background-color: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
 @media (max-width: 600px) {
   .detail__paper {
     padding: var(--space-5);

@@ -38,6 +38,11 @@
   color: var(--color-text-muted);
 }
 
+.meta__tag--hidden {
+  background-color: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
 .meta__author {
   color: var(--color-text-sub);
 }
