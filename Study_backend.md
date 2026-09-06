@@ -28,7 +28,14 @@ Level 3  데이터베이스와 SQL    [ ]1회독  [ ]2회독  [ ]3회독
 Level 4  구조·인증·권한        [ ]1회독  [ ]2회독  [ ]3회독
 Level 5  보안·성능·운영        [ ]1회독  [ ]2회독  [ ]3회독
 최종 관문  백지에서 API 서버 전체 만들기        [ ]
+────────────────────────  여기까지 = 이 프로젝트 수준  ────────────────────────
+Level 6  대형 백엔드 아키텍처   [ ]1회독  [ ]2회독  [ ]3회독
+Level 7  배포·운영·확장         [ ]1회독  [ ]2회독  [ ]3회독
+최종 관문 II  프로덕션 API 서버 구축              [ ]
 ```
+
+> Level 6~7 은 이 프로젝트 코드에 없는 내용이다. 실무 대형 서비스의 계층 설계·인증 심화·
+> 데이터 일관성·비동기·관측·배포·확장을 다룬다. 최종 관문(Level 1~5) 통과 후 시작한다.
 
 ### 0-3. 시작 전 필요한 것
 
@@ -1837,6 +1844,927 @@ Comment { id, diaryId, parentId, authorId, author: { id, nickname }, content, cr
 
 ---
 
+## Level 6 — 대형 백엔드 아키텍처 (실무 고급)
+
+### 목표
+
+API 가 100개, 테이블이 50개, 개발자가 5명이 되어도 **한 곳만 고치면 되는** 서버를 만든다.
+그리고 데이터 정합성·일관성을 구조로 보장한다.
+
+> **백엔드 대형화의 진짜 위험은 "데이터가 조용히 깨지는 것"이다.**
+> 화면 버그는 눈에 보이지만, 잘못 저장된 데이터는 몇 달 뒤 발견된다.
+> 이 레벨의 모든 기법은 "잘못된 상태가 애초에 저장되지 못하게" 하는 것이 목적이다.
+
+### 6-1. 계층 구조 심화 — 3층에서 5층으로
+
+이 프로젝트는 `routes → controller → service` 3층이다. 규모가 커지면 `service` 가 비대해진다.
+`service` 안에 있던 SQL 과 형태 변환을 분리한다.
+
+```
+routes/         주소 + 미들웨어 연결                     (로직 없음)
+ ↓
+controller/     HTTP 를 다룬다 — req 에서 값 꺼내기, 상태코드, res.json   (얇게)
+ ↓
+service/        유스케이스 = 업무 규칙 + 권한 + 트랜잭션 경계   (HTTP 를 모른다)
+ ↓
+repository/     DB 접근만 — SQL 문 하나당 함수 하나         (업무 규칙을 모른다)
+ ↓
+(db/pool)       커넥션 풀
+```
+
+그리고 형태 변환은 `serializer` 로, 입력 검증은 `dto`(또는 `schema`)로 뺀다.
+
+```
+modules/diaries/
+├─ diary.routes.js
+├─ diary.controller.js
+├─ diary.service.js
+├─ diary.repository.js      ← SELECT/INSERT/UPDATE/DELETE 만
+├─ diary.serializer.js      ← DB 행 → API 응답
+├─ diary.schema.js          ← 입력 검증 (zod)
+└─ diary.test.js
+```
+
+**각 층이 "모르는 것"이 곧 규칙이다**
+
+| 층 | 아는 것 | 절대 모르는 것 |
+| --- | --- | --- |
+| controller | `req`, `res`, 상태 코드 | SQL, 업무 규칙 |
+| service | 업무 규칙, 권한, 트랜잭션 | `req`/`res`, SQL 문법 |
+| repository | SQL, 테이블 구조 | 왜 부르는지, HTTP |
+| serializer | 응답 형태 | DB, 요청 |
+
+```js
+// diary.repository.js — HTTP 도 업무 규칙도 모른다. 그냥 데이터.
+export function findById(id, conn = pool) {
+  return queryOne(conn, `${SELECT_DIARY} WHERE d.id = ?`, [id])
+}
+export function insert(conn, data) {
+  return execute(conn, `INSERT INTO diaries (...) VALUES (...)`, [...])
+}
+```
+
+```js
+// diary.service.js — 규칙만. SQL 은 repository 에 위임.
+export async function updateDiary(viewerId, id, body) {
+  const current = await diaryRepo.findById(id)
+  if (!current) throw ApiError.notFound()
+  assertOwner(current, viewerId, '수정 권한이 없습니다.')
+  const data = diarySchema.parseUpdate(body)
+
+  await withTransaction(async (conn) => {
+    await diaryRepo.update(conn, id, data)
+    await imageRepo.replaceForDiary(conn, id, data.images)
+  })
+  return serializeDiary(await diaryRepo.findById(id))
+}
+```
+
+> **층을 몇 개로 나눌지에 정답은 없다.** 파일 25개면 3층, 100개면 5층 정도가 보통이다.
+> 판단 기준: **"이 파일이 두 가지 이유로 바뀌는가?"** SQL 이 바뀌어도, 업무 규칙이 바뀌어도
+> 같은 파일을 열어야 한다면 나눌 때다. (단일 책임 원칙)
+
+### 6-2. 모듈러 모놀리스 — 마이크로서비스로 쪼개기 전에
+
+> **결론부터: 대부분의 팀에게 마이크로서비스는 이르다.** 네트워크 호출, 분산 트랜잭션,
+> 배포 오케스트레이션이라는 큰 비용을 진다. **먼저 "잘 나뉜 모놀리스"를 만든다.**
+
+핵심은 **모듈 간 경계를 코드로 강제**하는 것이다.
+
+```
+src/modules/
+├─ auth/
+│  ├─ index.js        ← 이 모듈의 공개 API. 다른 모듈은 이것만 import.
+│  └─ internal/       ← 밖에서 import 금지
+├─ diaries/
+├─ comments/
+└─ notifications/
+```
+
+```js
+// comments 모듈이 auth 모듈의 사용자 정보가 필요할 때
+import { getUserById } from '../auth/index.js'   // ✅ 공개 API
+import { userRepository } from '../auth/internal/user.repository.js'  // ❌ 금지
+```
+
+```js
+// eslint — 모듈 내부 직접 접근 차단
+'no-restricted-imports': ['error', {
+  patterns: ['*/internal/*', '!./internal/*'],
+}]
+```
+
+이렇게 해두면 나중에 `notifications` 를 진짜 별도 서비스로 뗄 때,
+바꿀 곳이 `index.js` 하나뿐이다 (함수 호출 → HTTP 호출 or 메시지 발행).
+
+### 6-3. API 설계 규약
+
+대형 프로젝트에서 API 는 **계약**이다. 여러 팀·앱이 의존하므로 규칙을 문서로 고정한다.
+
+**① 버저닝**
+
+```
+/api/v1/diaries      ← 버전을 URL 에 박는다 (가장 단순, 권장)
+```
+
+파괴적 변경(필드 삭제, 타입 변경)이 필요하면 `/v2` 를 새로 열고 `/v1` 을 한동안 유지한다.
+필드 **추가**는 파괴적이지 않다 (클라이언트가 모르는 필드는 무시).
+
+**② 목록 응답 규약 — 페이지네이션·정렬·필터를 통일**
+
+```
+GET /api/v1/diaries?cursor=xxx&limit=20&sort=-createdAt&category=book
+
+응답:
+{
+  "items": [ ... ],
+  "page": { "nextCursor": "eyJ...", "hasNext": true }
+}
+```
+
+- 모든 목록 API 가 **같은 모양**이면 프론트가 재사용 컴포넌트를 만들 수 있다
+- 오프셋(`?page=3`)보다 커서(`?cursor=`)를 권장 — 데이터가 많아도 일정하게 빠르고, 중간 삽입에도 흔들리지 않는다
+
+**③ 오류 응답 표준 — RFC 7807 (Problem Details) 참고**
+
+```json
+{
+  "type": "https://api.example.com/errors/forbidden",
+  "title": "권한이 없습니다.",
+  "status": 403,
+  "detail": "이 다이어리의 작성자만 수정할 수 있습니다.",
+  "instance": "/api/v1/diaries/42",
+  "code": "DIARY_NOT_OWNER"        // 프론트가 분기할 수 있는 기계용 코드
+}
+```
+
+이 프로젝트의 `{ message }` 는 소규모엔 충분하지만, `code` 를 하나 추가하면
+프론트가 "메시지 문자열 비교" 대신 "코드 비교" 로 분기할 수 있다 (번역·문구 변경에 안 깨진다).
+
+**④ 멱등성(idempotency)**
+
+`POST` 를 사용자가 두 번 눌러 다이어리가 2개 생기는 것을 막는다.
+
+```
+POST /api/v1/diaries
+Idempotency-Key: 9b2c...    ← 클라이언트가 생성한 UUID
+
+서버: 이 키를 24시간 저장. 같은 키로 다시 오면 저장된 첫 응답을 그대로 반환.
+```
+
+**⑤ OpenAPI 우선 (스펙 먼저, 코드 나중)**
+
+```yaml
+# openapi.yaml — 프론트와 백이 합의하는 단 하나의 문서
+paths:
+  /diaries/{id}:
+    get:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Diary' } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+```
+
+→ 이 파일로 **프론트 타입**, **API 문서 페이지**, **요청 검증 미들웨어**, **목(mock) 서버**를 자동 생성한다.
+
+### 6-4. 입력 검증·직렬화를 스키마로 통일
+
+이 프로젝트의 `validate.js` 는 훌륭하지만 손으로 쓴 함수다. 규모가 커지면 스키마 라이브러리로 바꾼다.
+
+```bash
+npm install zod
+```
+
+```js
+// diary.schema.js
+import { z } from 'zod'
+
+export const createDiarySchema = z.object({
+  title: z.string().trim().min(1, '제목을 입력해 주세요.').max(60, '제목은 60자 이하'),
+  content: z.string().trim().min(1).max(20000),
+  category: z.enum(['diary', 'book', 'emotion']).default('diary'),
+  mood: z.string().max(20).default(''),
+  dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  visibility: z.enum(['public', 'private']).default('private'),
+  images: z.array(z.object({ url: z.string(), name: z.string() })).max(5).default([]),
+})
+```
+
+```js
+// 검증 미들웨어 — 라우트에 선언적으로 붙인다
+export const validate = (schema) => (req, res, next) => {
+  const result = schema.safeParse(req.body)
+  if (!result.success) {
+    const first = result.error.issues[0]
+    throw ApiError.badRequest(first.message)
+  }
+  req.body = result.data      // 정리된(파싱된) 값으로 교체
+  next()
+}
+
+router.post('/', validate(createDiarySchema), diaryController.create)
+```
+
+> **이점:** 검증 규칙이 **선언**이 되어 한눈에 보이고, OpenAPI 로 내보낼 수 있고,
+> 프론트엔드와 **같은 스키마 파일을 공유**할 수 있다 (모노레포일 때).
+
+### 6-5. 인증 심화
+
+**① 액세스 토큰 + 리프레시 토큰**
+
+이 프로젝트는 7일짜리 토큰 하나다. 문제: 탈취당하면 7일간 못 막고, 강제 로그아웃이 불가능하다.
+
+```
+액세스 토큰   15분   — 모든 API 요청에 사용. 짧아서 탈취돼도 피해가 작다.
+리프레시 토큰  14일   — HttpOnly 쿠키에만 저장. /auth/refresh 로 새 액세스 토큰을 받는다.
+```
+
+```js
+async function refresh(req, res) {
+  const token = req.cookies.refreshToken
+  const stored = await tokenRepo.findValid(token)          // DB 에 저장 → 서버가 무효화 가능
+  if (!stored) throw ApiError.unauthorized()
+
+  await tokenRepo.revoke(stored.id)                        // 회전(rotation): 쓴 건 즉시 폐기
+  const newRefresh = await tokenRepo.issue(stored.userId)
+  res.cookie('refreshToken', newRefresh, { httpOnly: true, secure: true, sameSite: 'strict' })
+  res.json({ accessToken: createAccessToken(stored.userId) })
+}
+```
+
+- **회전(rotation):** 리프레시 토큰은 한 번 쓰면 폐기하고 새로 발급. 도난된 토큰이 재사용되면 탐지 가능
+- **로그아웃 / 강제 만료:** DB 에서 리프레시 토큰을 지우면 즉시 무효화된다 (순수 JWT 로는 불가능)
+
+**② RBAC — 역할 기반 권한**
+
+```sql
+ALTER TABLE users ADD COLUMN role ENUM('user', 'admin') NOT NULL DEFAULT 'user';
+```
+
+```js
+export const requireRole = (...roles) => (req, res, next) => {
+  if (!roles.includes(req.user.role)) throw ApiError.forbidden()
+  next()
+}
+
+adminRouter.use(requireAuth, requireRole('admin'))
+```
+
+더 세분화가 필요하면 **권한(permission) 테이블**로: `role_permissions(role, permission)`,
+`diary:read:any`, `diary:delete:own` 같은 문자열로 관리한다.
+
+**③ 소셜 로그인 (OAuth 2.0) 흐름**
+
+```
+① 사용자가 "Google 로그인" 클릭
+② 프론트가 Google 인증 화면으로 리다이렉트 (client_id, redirect_uri, scope)
+③ 사용자 동의 → Google 이 code 를 붙여 redirect_uri 로 돌려보냄
+④ 백엔드가 code + client_secret 을 Google 에 보내 access_token 교환
+⑤ access_token 으로 Google 프로필(이메일) 조회
+⑥ 그 이메일로 우리 DB 에서 사용자 찾기/생성 → 우리 토큰 발급
+```
+
+핵심: **외부 토큰은 프로필 조회에만 쓰고 버린다.** 이후엔 우리 서비스의 토큰을 쓴다.
+
+**④ 이메일 인증 · 비밀번호 재설정**
+
+```
+비밀번호 재설정:
+① POST /auth/forgot { email } → 항상 200 (이메일 존재 여부 노출 금지)
+② 존재하면: 1회용 토큰(해시로 저장) + 만료 1시간 → 메일 발송
+③ POST /auth/reset { token, newPassword } → 토큰 검증 → 비번 교체 → 토큰 폐기
+                                          → 그 사용자의 모든 리프레시 토큰 무효화
+```
+
+### 6-6. 데이터 계층 심화
+
+**① 마이그레이션 도구 — 스키마 변경 이력 관리**
+
+이 프로젝트의 `migrate.js` 는 "전체를 다시 만들기"만 한다. 운영 DB 에는 못 쓴다 (데이터가 날아간다).
+**변경분(diff)을 순서대로 쌓는** 도구를 쓴다.
+
+```bash
+# MySQL 에서 쓸 수 있는 도구: db-migrate, knex(migrations), umzug, Prisma Migrate
+npm install -D db-migrate db-migrate-mysql
+```
+
+```
+migrations/
+├─ 1725600000_create_users.sql
+├─ 1725700000_add_role_to_users.sql       ← 이미 배포된 건 절대 수정 안 함. 새 파일만 추가.
+└─ 1725800000_create_refresh_tokens.sql
+```
+
+```sql
+-- 1725700000_add_role_to_users.sql
+-- Up
+ALTER TABLE users ADD COLUMN role ENUM('user','admin') NOT NULL DEFAULT 'user';
+-- Down (롤백용)
+ALTER TABLE users DROP COLUMN role;
+```
+
+배포 시 `migrate up` 이 **아직 적용 안 된 것만** 순서대로 실행한다.
+`schema_migrations` 테이블에 적용 이력이 남는다.
+
+> **철칙: 이미 배포된 마이그레이션 파일은 절대 수정하지 않는다.** 되돌리려면 새 마이그레이션을 추가한다.
+> 팀원마다 다른 시점에 DB 를 만들었기 때문에, 파일을 고치면 사람마다 스키마가 달라진다.
+
+**② 안전한 스키마 변경 (무중단)**
+
+컬럼 이름 변경 `content → body` 를 한 번에 하면, 배포 중 구버전 코드가 깨진다.
+
+```
+1단계: body 컬럼 추가 (nullable). 코드는 둘 다 씀 (읽기는 content, 쓰기는 둘 다)
+2단계: 기존 데이터를 body 로 복사 (백필)
+3단계: 코드를 body 만 쓰도록 변경 + 배포
+4단계: content 컬럼 삭제
+```
+
+느리지만 이것이 무중단 배포의 대가다.
+
+**③ 소프트 삭제 · 감사 로그**
+
+```sql
+ALTER TABLE diaries ADD COLUMN deleted_at DATETIME(3) NULL;
+-- 모든 조회에 WHERE deleted_at IS NULL 추가 (repository 에서 강제)
+
+CREATE TABLE audit_logs (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  actor_id BIGINT UNSIGNED, action VARCHAR(50), entity VARCHAR(50),
+  entity_id VARCHAR(50), before JSON, after JSON, created_at DATETIME(3)
+);
+```
+
+"누가 이 글을 언제 지웠나?" 에 답할 수 있어야 한다. 규제 산업에서는 필수.
+
+**④ 동시성 — 낙관적 락**
+
+두 사람이 같은 글을 동시에 수정하면, 나중 저장이 먼저 저장을 덮어쓴다 (lost update).
+
+```sql
+UPDATE diaries SET title = ?, version = version + 1
+WHERE id = ? AND version = ?     -- 내가 읽었을 때의 버전
+-- affectedRows 가 0 이면 그 사이 누가 바꿨다는 뜻 → 409 Conflict
+```
+
+**⑤ ORM 을 쓸까?**
+
+| 방식 | 언제 |
+| --- | --- |
+| Raw SQL (이 프로젝트) | SQL 을 확실히 배우는 단계. 복잡한 쿼리·튜닝 자유도 |
+| Query Builder (Knex, Kysely) | SQL 에 가깝되 타입 안전·조합 편의 |
+| ORM (Prisma, TypeORM, Drizzle) | CRUD 반복이 많고, 스키마-타입 동기화가 중요할 때 |
+
+> **SQL 을 먼저 익힌 뒤에 ORM 을 쓴다.** ORM 만 배우면 N+1, 인덱스, 트랜잭션 격리 수준 같은
+> 근본 문제를 못 본다. ORM 이 생성한 SQL 을 읽을 줄 알아야 한다.
+
+### 6-7. 트랜잭션 경계와 일관성
+
+**원칙: 하나의 유스케이스 = 하나의 트랜잭션.** service 함수가 트랜잭션 경계를 정한다.
+controller 나 repository 는 트랜잭션을 열지 않는다.
+
+```js
+// service 가 커넥션을 만들어 repository 들에 "주입"한다
+export async function createDiaryWithNotification(authorId, body) {
+  return withTransaction(async (conn) => {
+    const diary = await diaryRepo.insert(conn, ...)
+    await imageRepo.insertMany(conn, diary.id, body.images)
+    await outboxRepo.enqueue(conn, {                 // 아웃박스 패턴 (아래)
+      topic: 'diary.created', payload: { diaryId: diary.id },
+    })
+    return diary
+  })
+}
+```
+
+**아웃박스 패턴 — "DB 저장 + 외부 알림" 을 안전하게**
+
+"다이어리를 저장하고 팔로워에게 푸시 알림을 보낸다" 를 이렇게 짜면 위험하다.
+
+```js
+await diaryRepo.insert(...)     // 성공
+await pushService.send(...)     // 여기서 실패 → 알림 유실, 되돌릴 수도 없음
+```
+
+해법: 알림 요청을 **같은 트랜잭션 안에서** `outbox` 테이블에 저장.
+별도 워커가 `outbox` 를 읽어 실제 발송하고, 성공하면 행을 지운다.
+DB 커밋이 됐으면 알림도 반드시 (언젠가) 나간다.
+
+### 6-8. 비동기 작업 — 큐
+
+느린 작업(이미지 리사이즈, 메일 발송, PDF 생성)을 요청-응답 사이클에서 뺀다.
+
+```bash
+npm install bullmq ioredis
+```
+
+```js
+// 생산자 — 컨트롤러는 "일감만 등록"하고 즉시 응답
+await imageQueue.add('resize', { fileId }, { attempts: 3, backoff: { type: 'exponential', delay: 1000 } })
+res.status(202).json({ status: 'processing' })
+```
+
+```js
+// 소비자 — 별도 프로세스로 실행
+new Worker('image', async (job) => {
+  await sharp(job.data.path).resize(1280).toFile(...)
+}, { concurrency: 4 })
+```
+
+- **재시도 + 지수 백오프:** 일시적 실패(네트워크)를 자동 복구
+- **DLQ(Dead Letter Queue):** 계속 실패하는 작업은 격리해 나중에 조사
+- **스케줄 작업:** `queue.add('cleanup', {}, { repeat: { pattern: '0 3 * * *' } })` (매일 새벽 3시)
+
+### 6-9. 캐싱
+
+```
+요청 → [앱 메모리 캐시] → [Redis 공유 캐시] → [DB]
+        (초 단위, 프로세스별)   (분 단위, 서버 공유)   (원본)
+```
+
+**Cache-Aside 패턴**
+
+```js
+async function getMonthlyCounts(userId, month) {
+  const key = `counts:${userId}:${month}`
+  const cached = await redis.get(key)
+  if (cached) return JSON.parse(cached)
+
+  const data = await diaryRepo.countByDay(userId, month)
+  await redis.set(key, JSON.stringify(data), 'EX', 300)   // 5분
+  return data
+}
+```
+
+**캐시 무효화 — 가장 어려운 문제**
+
+```js
+// 다이어리를 쓰거나 지우면 그 달 캐시를 삭제한다
+async function invalidateCounts(userId, dateKey) {
+  await redis.del(`counts:${userId}:${dateKey.slice(0, 7)}`)
+}
+```
+
+> **캐시는 마지막 수단이다.** 순서: ① 인덱스 추가 ② 쿼리 개선 ③ N+1 제거 ④ 그래도 느리면 캐시.
+> 캐시를 먼저 넣으면 "왜 낡은 데이터가 보이지?" 버그와 평생 싸운다.
+
+### 6-10. 관측성 (Observability)
+
+**① 구조화 로깅 + 상관 ID**
+
+```bash
+npm install pino pino-http
+```
+
+```js
+import pinoHttp from 'pino-http'
+app.use(pinoHttp({
+  genReqId: (req) => req.headers['x-request-id'] || crypto.randomUUID(),
+  redact: ['req.headers.authorization', 'req.body.password'],   // 민감정보 마스킹
+}))
+
+// 어디서든
+req.log.info({ diaryId: id }, 'diary updated')
+```
+
+로그가 JSON 이면 검색·집계가 된다. `x-request-id` 로 **하나의 요청이 거친 모든 로그**를 묶어 본다.
+
+**② 메트릭 (Prometheus 형식)**
+
+```js
+import client from 'prom-client'
+const httpDuration = new client.Histogram({
+  name: 'http_request_duration_seconds',
+  labelNames: ['method', 'route', 'status'],
+})
+app.get('/metrics', async (req, res) => res.send(await client.register.metrics()))
+```
+
+"p95 응답 시간", "초당 요청 수", "5xx 비율" 을 그래프로 본다.
+
+**③ 헬스체크 두 종류**
+
+```js
+router.get('/health/live', (req, res) => res.json({ status: 'ok' }))   // 프로세스가 살아있나
+router.get('/health/ready', async (req, res) => {                       // 트래픽 받을 준비됐나
+  try { await pool.query('SELECT 1'); await redis.ping(); res.json({ status: 'ready' }) }
+  catch { res.status(503).json({ status: 'not-ready' }) }
+})
+```
+
+로드밸런서는 `ready` 를 보고 트래픽을 보낼지 정한다.
+
+**④ 분산 추적 (OpenTelemetry)** — 요청이 여러 서비스를 거칠 때 어디서 느린지 본다.
+
+**⑤ 에러 추적 (Sentry)** — 예외를 스택·요청 컨텍스트와 함께 수집.
+
+### 6-11. 테스트 심화
+
+```
+                 E2E / 계약 테스트         적게
+              통합 테스트 (실제 DB)         중간 — supertest + 테스트 DB
+          단위 테스트 (service, util)      많이 — DB 목킹 또는 순수 함수
+```
+
+**통합 테스트 — 진짜 DB 를 띄운다 (testcontainers)**
+
+```js
+import { MySqlContainer } from '@testcontainers/mysql'
+
+let container
+beforeAll(async () => {
+  container = await new MySqlContainer().start()
+  process.env.DB_HOST = container.getHost()
+  process.env.DB_PORT = String(container.getPort())
+  await migrate()   // 스키마 적용
+})
+afterAll(() => container.stop())
+
+it('남의 글 수정은 403', async () => {
+  const { token: mine } = await signup('a@b.com')
+  const { token: other } = await signup('c@d.com')
+  const { body: diary } = await request(app).post('/api/diaries')
+    .set('Authorization', `Bearer ${mine}`).send(validPayload)
+
+  const res = await request(app).put(`/api/diaries/${diary.id}`)
+    .set('Authorization', `Bearer ${other}`).send(validPayload)
+  expect(res.status).toBe(403)
+})
+```
+
+**시드 팩토리 — 테스트 데이터를 함수로**
+
+```js
+export const makeDiary = (overrides = {}) => ({
+  title: '테스트', content: '내용', category: 'diary',
+  visibility: 'private', dateKey: '2026-09-06', images: [], ...overrides,
+})
+```
+
+**계약 테스트** — 프론트가 기대하는 응답 모양(zod 스키마)으로 실제 응답을 검증한다.
+모노레포에서 `packages/types` 의 스키마를 백엔드 테스트가 import 한다.
+
+### 6-12. 파일·미디어
+
+**직접 서빙(이 프로젝트) → 오브젝트 스토리지 + presigned URL**
+
+```
+① 프론트: POST /api/uploads/sign { filename, contentType }
+② 백엔드: S3/R2 에 올릴 수 있는 서명된 URL 을 만들어 응답 (10분 유효)
+③ 프론트: 그 URL 로 파일을 S3 에 직접 PUT (백엔드를 거치지 않음 → 서버 부하 0)
+④ 프론트: 업로드 완료 후 파일 키를 다이어리 저장 요청에 포함
+⑤ 백엔드: 그 키가 실제로 존재하는지 확인 후 저장
+```
+
+- **장점:** 대용량 파일이 앱 서버 메모리·대역폭을 안 먹는다. 수평 확장에 유리.
+- **이미지 변형:** 업로드 완료 이벤트 → 큐 → 리사이즈 워커, 또는 CDN 의 on-the-fly 리사이즈
+- **검증:** presign 시 `contentType`·크기 제한, 업로드 후 실제 파일 헤더(magic number) 확인
+
+### 백지 재현 과제 (2회독)
+
+1. 다이어리 모듈을 `routes/controller/service/repository/serializer/schema` 로 나눈다
+2. zod 스키마 + `validate` 미들웨어로 모든 입력 검증을 선언적으로 바꾼다
+3. 리프레시 토큰(DB 저장 + 회전)을 도입하고, 로그아웃으로 즉시 무효화되는지 확인한다
+4. `role` 컬럼과 `requireRole('admin')` 미들웨어로 관리자 전용 엔드포인트를 만든다
+5. `node-pg-migrate`(또는 knex) 로 마이그레이션 3개를 순서대로 쌓아 본다
+6. 이미지 리사이즈를 BullMQ 워커로 빼고, 202 응답 후 백그라운드 처리되게 한다
+7. pino 구조화 로깅 + `x-request-id` 로 한 요청의 로그를 묶어 본다
+8. testcontainers 로 실제 MySQL 을 띄운 통합 테스트 5개를 작성한다
+
+### 확장 과제 (3회독)
+
+1. OpenAPI 스펙을 먼저 쓰고, 그것으로 요청 검증 미들웨어와 문서 페이지를 생성한다
+2. 아웃박스 패턴으로 "다이어리 공개 시 알림" 을 구현한다 (트랜잭션 + 워커)
+3. 월별 개수 조회에 Redis cache-aside 를 넣고, 글 작성 시 정확히 무효화한다
+4. 낙관적 락(`version` 컬럼)으로 동시 수정 시 409 를 반환한다
+5. presigned URL 방식으로 업로드를 바꾸고 앱 서버가 파일을 거치지 않게 한다
+
+### Level 6 체크리스트
+
+- [ ] 각 계층이 "모르는 것"으로 책임을 정의할 수 있다
+- [ ] 마이크로서비스 전에 모듈러 모놀리스를 하는 이유를 안다
+- [ ] API 버저닝·커서 페이지네이션·표준 오류 포맷을 설계할 수 있다
+- [ ] 액세스/리프레시 토큰 분리와 회전의 이유를 설명할 수 있다
+- [ ] 배포된 마이그레이션을 수정하면 안 되는 이유를 안다
+- [ ] 무중단 컬럼 변경의 4단계를 안다
+- [ ] 아웃박스 패턴이 푸는 문제를 설명할 수 있다
+- [ ] 캐시가 "마지막 수단"인 이유를 안다
+- [ ] 구조화 로깅과 상관 ID 의 가치를 안다
+- [ ] testcontainers 로 통합 테스트를 작성할 수 있다
+
+---
+
+## Level 7 — 배포·운영·확장 (프로덕션)
+
+### 목표
+
+로컬에서 도는 서버를 **여러 대로 확장 가능하고, 안전하게 배포되고, 새벽에 안 깨우는** 서비스로 만든다.
+
+### 7-1. 12요소 앱 (Twelve-Factor)
+
+프로덕션 서버가 지켜야 할 12가지 중 핵심 6가지:
+
+| 원칙 | 뜻 | 이 프로젝트에서 |
+| --- | --- | --- |
+| 설정을 환경변수로 | 코드에 환경별 값이 없다 | `config/index.js` ✅ |
+| 백엔드 서비스를 attached resource 로 | DB·Redis·S3 를 URL 하나로 교체 가능 | `DATABASE_URL` 형태로 |
+| 상태를 프로세스 밖에 | 서버는 무상태. 재시작해도 잃을 게 없다 | 세션·업로드를 외부화 |
+| 로그를 stdout 스트림으로 | 파일에 쓰지 않는다. 플랫폼이 수집 | pino → stdout |
+| 빠른 시작·우아한 종료 | 몇 초 안에 뜨고, SIGTERM 에 정리 후 종료 | `server.js` 의 shutdown ✅ |
+| dev/prod 동등성 | 로컬과 운영이 같은 DB·Node 버전 | Docker 로 |
+
+### 7-2. Docker
+
+```dockerfile
+# 멀티스테이지 — 빌드 도구를 최종 이미지에 넣지 않는다
+FROM node:20-slim AS deps
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+FROM node:20-slim
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+USER node                          # root 로 실행하지 않는다
+EXPOSE 4000
+CMD ["node", "src/server.js"]
+```
+
+```yaml
+# docker-compose.yml — 로컬에서 DB·Redis·앱을 한 번에
+services:
+  api:
+    build: ./backend
+    environment:
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379
+    depends_on: { db: { condition: service_healthy } }
+    ports: ['4000:4000']
+  db:
+    image: mysql:8
+    environment: { MYSQL_ROOT_PASSWORD: local, MYSQL_DATABASE: my_diary }
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      interval: 5s
+  redis:
+    image: redis:7
+```
+
+### 7-3. CI/CD 파이프라인
+
+```yaml
+# .github/workflows/deploy.yml
+on:
+  push: { branches: [main] }
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql: { image: mysql:8, env: { MYSQL_ROOT_PASSWORD: test }, ports: ['3306:3306'] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run migrate            # 테스트 DB 에 스키마 적용
+      - run: npm run test:integration
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t $IMAGE .
+      - run: docker push $IMAGE
+      - run: ssh deploy@server "cd /app && docker compose pull && npm run migrate && docker compose up -d"
+```
+
+**배포 순서가 중요하다**
+
+```
+1. 새 코드 빌드·테스트
+2. 마이그레이션 실행 (이전 버전 코드와도 호환되는 것만 — 6-6 참고)
+3. 새 컨테이너를 띄우고 /health/ready 통과 대기
+4. 로드밸런서가 트래픽을 새 컨테이너로 전환 (blue-green 또는 rolling)
+5. 옛 컨테이너 종료 (진행 중 요청은 끝까지 처리 — graceful)
+6. 문제 시 즉시 이전 이미지로 롤백
+```
+
+### 7-4. 시크릿 관리
+
+```
+로컬:        .env (git 제외)
+CI:          GitHub Actions Secrets
+운영:        AWS SSM Parameter Store / Secrets Manager / Vault / 플랫폼 환경변수
+```
+
+- `JWT_SECRET` 등은 **32바이트 이상 랜덤**, 정기 교체(rotation) 가능하게 설계
+- DB 계정은 앱 전용, 최소 권한 (`GRANT SELECT, INSERT, UPDATE, DELETE` — `DROP` 없음)
+- 시크릿이 실수로 커밋되면 **즉시 무효화하고 새로 발급** (git 히스토리에서 지워도 이미 유출된 것으로 간주)
+- `gitleaks` 를 pre-commit 훅과 CI 에 걸어 커밋 자체를 막는다
+
+### 7-5. 수평 확장
+
+```
+                  ┌─ API 서버 #1 ─┐
+사용자 → 로드밸런서 ├─ API 서버 #2 ─┤ → MySQL (기본, 쓰기)
+                  └─ API 서버 #3 ─┘ → MySQL 복제본 (읽기)
+                         │
+                       Redis (세션·캐시·큐 — 서버들이 공유)
+```
+
+**무상태로 만들기 위해 옮겨야 하는 것**
+
+| 지금 있는 곳 | 옮길 곳 |
+| --- | --- |
+| 메모리에 저장한 세션/캐시 | Redis |
+| 로컬 디스크 `uploads/` | S3 / R2 |
+| 프로세스 안의 rate-limit 카운터 | Redis (`rate-limit-redis`) |
+| 크론/스케줄러를 모든 서버가 실행 | 큐 + 단일 스케줄러, 또는 리더 선출 |
+
+**DB 커넥션 풀 사이징**
+
+```
+서버 3대 × connectionLimit 10 = 30 커넥션
+MySQL max_connections (기본 151) 안에 들어야 한다.
+서버를 늘릴 때마다 이 계산을 다시 한다. PgBouncer 같은 커넥션 풀러를 앞에 두기도 한다.
+```
+
+### 7-6. DB 확장 순서
+
+```
+1. 인덱스 — EXPLAIN 으로 풀스캔 찾아 제거 (가장 싸고 효과 큼)
+2. 쿼리 개선 — N+1 제거, SELECT * 지양, 필요한 컬럼만
+3. 읽기 복제본 — 조회를 복제본으로 분산 (읽기가 8, 쓰기가 2인 서비스에 효과적)
+4. 캐싱 — 자주 읽고 안 바뀌는 것
+5. 파티셔닝 — 큰 테이블을 날짜 등으로 물리적 분할
+6. 샤딩 — 사용자 ID 로 DB 자체를 나눔 (최후의 수단, 조인·트랜잭션이 어려워짐)
+```
+
+> 대부분의 서비스는 **1~2번에서 끝난다.** 3번 이상이 필요한 규모는 흔치 않다.
+> "샤딩부터 생각하는" 것은 조기 최적화다.
+
+### 7-7. 방어
+
+| 위협 | 방어 |
+| --- | --- |
+| 무차별 로그인 | rate limit (IP + 계정 단위), 실패 시 지연, CAPTCHA |
+| 대량 요청 / DDoS | CDN/WAF (Cloudflare), 전역 rate limit, `trust proxy` 설정 |
+| 거대 페이로드 | `express.json({ limit: '1mb' })`, 업로드 크기 제한 |
+| SQL 인젝션 | 플레이스홀더 `?` (Level 3) |
+| 대량 데이터 유출 | 목록 API 의 `limit` 상한 강제 (최대 100), 인증 필수 |
+| 봇 가입 | 이메일 인증, 가입 rate limit |
+| 의존성 취약점 | `npm audit`, dependabot/renovate |
+
+**OWASP API Security Top 10 자가 점검 (핵심)**
+
+- [ ] 모든 객체 접근에 소유권 검사가 있는가? (`/diaries/:id` 에 남의 id 를 넣으면 403)
+- [ ] 대량 할당(mass assignment)을 막았는가? (`req.body` 를 통째로 저장하지 않는다 — 스키마로 필드 화이트리스트)
+- [ ] 인증이 필요한 모든 경로에 미들웨어가 걸렸는가? (라우터 단위로 — Level 2)
+- [ ] 오류·로그에 민감정보가 없는가?
+- [ ] 목록·검색에 페이지 크기 상한이 있는가?
+
+### 7-8. 백업과 장애 대응
+
+```bash
+# 매일 자동 백업 (cron)
+0 3 * * *  mysqldump --single-transaction my_diary | gzip > /backup/$(date +\%F).sql.gz
+```
+
+- **복구를 실제로 연습한다.** 백업이 있어도 복구해 본 적이 없으면 없는 것과 같다
+- **RPO**(얼마나 데이터를 잃어도 되나) / **RTO**(얼마나 빨리 복구해야 하나) 를 정한다
+- 오프사이트 보관 (다른 리전/클라우드), 보관 주기 (일 7 / 주 4 / 월 12)
+
+### 7-9. SLO 와 온콜
+
+```
+SLO 예: "월간 가용성 99.9%, p95 응답 < 300ms"
+        → 에러 예산: 한 달에 약 43분 다운 허용
+
+알림 규칙:
+- 5xx 비율 > 1% (5분) → 즉시 호출
+- p95 > 1s (10분) → 경고
+- /health/ready 실패 → 즉시 호출
+- 디스크 > 85% → 경고
+```
+
+> **알림은 "행동이 필요한 것만" 울려야 한다.** 무시해도 되는 알림이 쌓이면
+> 진짜 장애 알림도 무시하게 된다 (alert fatigue).
+
+### 7-10. 마이크로서비스로 언제 쪼개나
+
+거의 대부분: **쪼개지 않는다.** 모듈러 모놀리스(6-2)로 충분하다.
+
+쪼갤 만한 신호:
+- 특정 모듈만 트래픽·확장 요구가 압도적으로 다르다 (예: 이미지 처리)
+- 팀이 10명을 넘어 하나의 배포 파이프라인이 병목이다
+- 특정 부분만 다른 언어·런타임이 필요하다
+
+쪼갤 때의 비용: 네트워크 지연·실패, 분산 트랜잭션(→ 사가 패턴), 통합 테스트 난이도,
+운영 복잡도(서비스 디스커버리, 로그 수집, 추적). **이득이 이 비용을 넘을 때만.**
+
+### 백지 재현 과제 (2회독)
+
+1. 멀티스테이지 Dockerfile + docker-compose(앱·MySQL·Redis)로 로컬 전체 스택을 띄운다
+2. GitHub Actions 로 test(실제 MySQL 서비스) → 마이그레이션 → 통합테스트 → 이미지 빌드 파이프라인을 만든다
+3. 세션/캐시/rate-limit 카운터를 Redis 로 옮겨 서버를 무상태로 만든다
+4. 업로드를 S3 호환 스토리지(MinIO 로컬)로 옮긴다
+5. `mysqldump` 자동 백업 크론을 만들고, **백업에서 새 DB 로 복구를 실제로 해본다**
+6. `/health/live` 와 `/health/ready` 를 나누고, DB 를 끈 상태에서 `ready` 가 503 인지 확인한다
+
+### 확장 과제 (3회독)
+
+1. blue-green 배포를 흉내낸다 — 새 컨테이너를 띄우고 헬스체크 후 트래픽 전환, 롤백 스크립트 작성
+2. 읽기 복제본을 붙이고 (docker MySQL replication), 조회 쿼리를 복제본으로 라우팅한다
+3. `prom-client` + Grafana 로 p95 응답 시간과 5xx 비율 대시보드를 만든다
+4. OWASP API Top 10 체크리스트로 자기 API 를 감사하고, 발견한 구멍을 막는다
+5. `gitleaks` 를 pre-commit 과 CI 에 걸고, 일부러 가짜 시크릿을 커밋해 막히는지 확인한다
+
+### Level 7 체크리스트
+
+- [ ] 12요소 앱의 "무상태" 원칙이 수평 확장과 어떻게 연결되는지 안다
+- [ ] 멀티스테이지 Docker 빌드의 이유를 안다
+- [ ] 배포 시 마이그레이션을 코드 배포보다 먼저/호환되게 하는 이유를 안다
+- [ ] 무상태 서버를 만들기 위해 무엇을 외부화해야 하는지 안다
+- [ ] DB 확장을 인덱스→쿼리→복제본→캐시 순으로 하는 이유를 안다
+- [ ] 대량 할당(mass assignment) 취약점과 방어법을 안다
+- [ ] 백업만으로 부족하고 복구 연습이 필요한 이유를 안다
+- [ ] 알림은 "행동이 필요한 것만" 울려야 하는 이유를 안다
+- [ ] 마이크로서비스의 비용을 구체적으로 나열할 수 있다
+
+---
+
+## 최종 관문 II — 프로덕션 API 서버 구축
+
+Level 6~7 을 마친 뒤 도전한다.
+
+```
+[구조]
+- routes/controller/service/repository/serializer/schema 계층
+- 모듈러 모놀리스, 모듈 경계를 ESLint 로 강제
+- zod 스키마로 모든 입력 검증, 필드 화이트리스트
+
+[인증/권한]
+- 액세스(15분) + 리프레시(14일, DB 저장, 회전) 토큰
+- role 기반 권한, 관리자 엔드포인트
+- 비밀번호 재설정 (1회용 토큰, 이메일 존재 여부 비노출)
+
+[데이터]
+- 순서가 쌓이는 마이그레이션 도구
+- 소프트 삭제 + audit_logs
+- 낙관적 락으로 동시 수정 충돌 감지
+- N+1 없음 (모든 목록 API 검증)
+
+[비동기/캐시]
+- 이미지 리사이즈를 BullMQ 워커로
+- 월별 개수 Redis cache-aside + 정확한 무효화
+- 아웃박스 패턴으로 알림 발송
+
+[관측]
+- pino 구조화 로그 + x-request-id
+- /metrics (prom-client), /health/live, /health/ready
+- Sentry 에러 추적
+
+[릴리스]
+- 멀티스테이지 Docker, docker-compose 로컬 스택
+- CI: lint → 단위 → 마이그레이션 → 통합(testcontainers) → 이미지 빌드
+- 마이그레이션 자동 실행, 롤백 스크립트
+
+[운영]
+- 무상태 (세션·업로드·rate-limit 전부 외부화), 서버 3대 가정
+- S3 호환 스토리지 + presigned URL
+- 자동 백업 + 복구 연습 완료
+- helmet, rate limit(IP+계정), 페이로드 크기 제한
+```
+
+**완성 기준 — 직접 확인한다**
+
+- [ ] 서버를 3개 프로세스로 띄워도 로그인·업로드·좋아요가 정상 동작한다 (무상태)
+- [ ] 한 프로세스를 죽여도 진행 중이던 요청이 끝까지 처리된다 (graceful)
+- [ ] 리프레시 토큰을 한 번 쓰면 재사용이 거부된다 (회전)
+- [ ] 로그아웃하면 리프레시 토큰이 즉시 무효화된다
+- [ ] 같은 글을 두 탭에서 동시에 수정하면 나중 저장이 409
+- [ ] `req.body` 에 `role: "admin"` 을 넣어 가입해도 무시된다 (대량 할당 방어)
+- [ ] `/api/diaries?limit=99999` 를 보내도 최대 100개만 온다
+- [ ] DB 를 끄면 `/health/ready` 가 503, 로드밸런서가 트래픽을 안 보낸다
+- [ ] 백업 파일에서 완전히 새 DB 로 복구가 된다
+- [ ] 이미지 업로드가 앱 서버 메모리를 거치지 않는다 (presigned URL)
+- [ ] 하나의 요청 로그가 `x-request-id` 로 전부 묶여 조회된다
+- [ ] `gitleaks` 가 가짜 시크릿 커밋을 막는다
+
+### 그다음
+
+1. **TypeScript 전환** — repository 반환 타입, DTO, service 시그니처
+2. **OpenAPI 우선 개발** — 스펙 → 검증·문서·타입·목 생성
+3. **실제 배포** — 도메인, HTTPS, 모니터링 대시보드, 알림까지
+4. **부하 테스트** — k6 로 목표 RPS 를 넣고 병목을 찾아 개선
+
+---
+
 ## 부록 A — SQL 치트시트
 
 ```sql
@@ -1937,6 +2865,14 @@ Level 4  계층 구조 / 인증 / 권한 / 검증 / 업로드     ← 실무의 
 Level 5  보안 / 성능 / 로깅 / 테스트 / 배포          ← 밖에 내놓을 수 있게
    ↓
 최종 관문  백지에서 전체 만들기 → 조건 바꿔 다시 만들기
+   ↓
+═══ 이 프로젝트 수준 달성. 아래는 대형 서비스로 ═══
+   ↓
+Level 6  계층 심화 / API 규약 / 인증 심화 / 마이그레이션 / 큐 / 캐시 / 관측
+   ↓
+Level 7  12요소 / Docker / CI·CD / 무상태 확장 / DB 확장 / 방어 / 백업·SLO
+   ↓
+최종 관문 II  프로덕션 API 서버 구축 (무상태·관측·자동배포)
 ```
 
 프론트엔드는 [Study_frontend.md](Study_frontend.md) 를 함께 본다.
