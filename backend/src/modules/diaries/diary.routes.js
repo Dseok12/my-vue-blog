@@ -2,6 +2,7 @@ import { Router } from 'express'
 
 import * as controller from './diary.controller.js'
 import { commentRouter } from '../comments/comment.routes.js'
+import { reportRouter } from '../reports/report.routes.js'
 import { requireAuth } from '../../middlewares/auth.js'
 
 export const diaryRouter = Router()
@@ -23,5 +24,8 @@ diaryRouter.post('/:id/like', controller.toggleLike)
 
 // /diaries/:id/comments 아래는 댓글 라우터가 담당한다.
 diaryRouter.use('/:id/comments', commentRouter)
+
+// /diaries/:id/reports 아래는 신고 라우터가 담당한다.
+diaryRouter.use('/:id/reports', reportRouter)
 
 export default diaryRouter

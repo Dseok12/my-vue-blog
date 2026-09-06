@@ -34,7 +34,11 @@ async function findUserByToken(token) {
     'SELECT id, email, nickname, created_at FROM users WHERE id = ?',
     [payload.sub],
   )
-  return row || null
+  if (!row) return null
+
+  // 관리자 여부는 .env 의 ADMIN_EMAILS 로 정한다. (별도 권한 테이블 없이 단순하게)
+  row.isAdmin = config.adminEmails.includes(String(row.email).toLowerCase())
+  return row
 }
 
 /** 로그인한 회원만 통과시킨다. */
@@ -49,5 +53,11 @@ export async function requireAuth(req, res, next) {
 /** 로그인하지 않아도 통과시키되, 로그인했다면 req.user 를 채운다. */
 export async function optionalAuth(req, res, next) {
   req.user = await findUserByToken(readBearerToken(req))
+  next()
+}
+
+/** 관리자만 통과시킨다. (requireAuth 다음에 사용한다) */
+export function requireAdmin(req, res, next) {
+  if (!req.user?.isAdmin) throw ApiError.forbidden('관리자만 접근할 수 있습니다.')
   next()
 }

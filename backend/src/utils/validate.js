@@ -12,6 +12,16 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 export const CATEGORIES = ['diary', 'book', 'emotion']
 export const VISIBILITIES = ['public', 'private']
 export const MOODS = ['happy', 'calm', 'tired', 'sad', 'angry', 'excited']
+export const REPORT_REASONS = [
+  'obscene',
+  'defamation',
+  'political',
+  'violent',
+  'scam',
+  'threat',
+  'illegal',
+  'etc',
+]
 
 function asString(value) {
   return typeof value === 'string' ? value : ''
@@ -105,4 +115,39 @@ export function optionalDateKey(value) {
   if (!dateKey) return null
   if (!isValidDateKey(dateKey)) throw ApiError.badRequest('날짜가 올바르지 않습니다.')
   return dateKey
+}
+
+/** 신고 본문을 검증하고 정리된 값을 돌려준다. */
+export function requireReportPayload(body = {}) {
+  const reason = asString(body.reason).trim()
+  if (!REPORT_REASONS.includes(reason)) {
+    throw ApiError.badRequest('신고 사유를 선택해 주세요.')
+  }
+
+  const detail = asString(body.detail).trim().slice(0, 500)
+  return { reason, detail }
+}
+
+/** 마이페이지에서 바꾼 닉네임/비밀번호를 검증한다. 바꿀 항목만 담아서 돌려준다. */
+export function requireProfilePatch(body = {}) {
+  const patch = {}
+
+  if (body.nickname !== undefined) {
+    patch.nickname = requireNickname(body.nickname)
+  }
+
+  const wantsPasswordChange =
+    body.newPassword !== undefined || body.currentPassword !== undefined
+  if (wantsPasswordChange) {
+    if (!asString(body.currentPassword)) {
+      throw ApiError.badRequest('현재 비밀번호를 입력해 주세요.')
+    }
+    patch.currentPassword = asString(body.currentPassword)
+    patch.newPassword = requirePassword(body.newPassword)
+  }
+
+  if (Object.keys(patch).length === 0) {
+    throw ApiError.badRequest('변경할 내용이 없습니다.')
+  }
+  return patch
 }

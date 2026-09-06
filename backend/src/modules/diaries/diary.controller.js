@@ -2,33 +2,33 @@
 import * as diaryService from './diary.service.js'
 
 export async function listMine(req, res) {
-  res.json(await diaryService.listMine(req.user.id, req.query))
+  res.json(await diaryService.listMine(req.user, req.query))
 }
 
 export async function listFeed(req, res) {
-  res.json(await diaryService.listFeed(req.user.id, req.query))
+  res.json(await diaryService.listFeed(req.user, req.query))
 }
 
 export async function monthlyCounts(req, res) {
-  res.json(await diaryService.monthlyCounts(req.user.id, req.query))
+  res.json(await diaryService.monthlyCounts(req.user, req.query))
 }
 
 export async function get(req, res) {
-  res.json(await diaryService.get(req.user.id, req.params.id))
+  res.json(await diaryService.get(req.user, req.params.id))
 }
 
 export async function create(req, res) {
-  res.status(201).json(await diaryService.create(req.user.id, req.body))
+  res.status(201).json(await diaryService.create(req.user, req.body))
 }
 
 export async function update(req, res) {
-  res.json(await diaryService.update(req.user.id, req.params.id, req.body))
+  res.json(await diaryService.update(req.user, req.params.id, req.body))
 }
 
 export async function remove(req, res) {
-  res.json(await diaryService.remove(req.user.id, req.params.id))
+  res.json(await diaryService.remove(req.user, req.params.id))
 }
 
 export async function toggleLike(req, res) {
-  res.json(await diaryService.toggleLike(req.user.id, req.params.id))
+  res.json(await diaryService.toggleLike(req.user, req.params.id))
 }

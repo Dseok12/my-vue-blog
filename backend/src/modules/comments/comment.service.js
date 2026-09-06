@@ -2,13 +2,16 @@
  * 댓글 / 대댓글.
  *
  * 권한 규칙
- * - 목록 : 볼 수 있는 글의 댓글만 (비공개 글은 작성자 본인만)
- * - 작성 : 공개된 글에만
+ * - 목록 : 볼 수 있는 글의 댓글만 (비공개 글은 작성자 본인만 / 가림글은 작성자·관리자만)
+ * - 작성 : 공개되고 가림되지 않은 글에만
  * - 삭제 : 댓글 작성자 본인만 (딸린 대댓글도 함께 지운다)
+ *
+ * 공개 글의 댓글 작성자 닉네임은 익명 처리한다. (본인/관리자는 그대로)
  */
 import { execute, query, queryOne, withTransaction } from '../../db/pool.js'
 import { ApiError } from '../../utils/ApiError.js'
 import { toIso } from '../../utils/date.js'
+import { displayNickname } from '../../utils/nickname.js'
 import { newId } from '../../utils/id.js'
 import { requireContent } from '../../utils/validate.js'
 
@@ -19,12 +22,16 @@ const SELECT_COMMENT = `
     JOIN users u ON u.id = c.author_id
 `
 
-function serializeComment(row) {
+function serializeComment(row, viewer) {
+  const isSelf = row.author_id === viewer.id
   return {
     id: row.id,
     diaryId: row.diary_id,
     parentId: row.parent_id,
-    author: { id: row.author_id, nickname: row.author_nickname },
+    author: {
+      id: row.author_id,
+      nickname: displayNickname(row.author_nickname, { isSelf, isAdmin: viewer.isAdmin }),
+    },
     authorId: row.author_id,
     content: row.content,
     createdAt: toIso(row.created_at),
@@ -33,31 +40,43 @@ function serializeComment(row) {
 
 /** 댓글을 달 글을 찾는다. 없으면 404 */
 async function findDiaryOrFail(diaryId) {
-  const diary = await queryOne('SELECT id, author_id, visibility FROM diaries WHERE id = ?', [
-    diaryId,
-  ])
+  const diary = await queryOne(
+    'SELECT id, author_id, visibility, is_hidden FROM diaries WHERE id = ?',
+    [diaryId],
+  )
   if (!diary) throw ApiError.notFound('다이어리를 찾을 수 없습니다.')
   return diary
 }
 
-export async function list(viewerId, diaryId) {
-  const diary = await findDiaryOrFail(diaryId)
-
-  if (diary.visibility === 'private' && diary.author_id !== viewerId) {
+/** 이 글의 댓글을 볼 수 있는지 확인한다. */
+function assertCanView(diary, viewer) {
+  const isAuthor = diary.author_id === viewer.id
+  if (diary.visibility === 'private' && !isAuthor) {
     throw ApiError.forbidden('비공개 글입니다.')
   }
+  if (Number(diary.is_hidden) && !isAuthor && !viewer.isAdmin) {
+    throw ApiError.forbidden('신고가 접수되어 가림 처리된 글입니다.')
+  }
+}
+
+export async function list(viewer, diaryId) {
+  const diary = await findDiaryOrFail(diaryId)
+  assertCanView(diary, viewer)
 
   const rows = await query(SELECT_COMMENT + ' WHERE c.diary_id = ? ORDER BY c.created_at ASC', [
     diaryId,
   ])
-  return { items: rows.map(serializeComment) }
+  return { items: rows.map((row) => serializeComment(row, viewer)) }
 }
 
-export async function create(viewerId, diaryId, body = {}) {
+export async function create(viewer, diaryId, body = {}) {
   const diary = await findDiaryOrFail(diaryId)
 
   if (diary.visibility !== 'public') {
     throw ApiError.badRequest('공개된 글에만 댓글을 쓸 수 있습니다.')
+  }
+  if (Number(diary.is_hidden)) {
+    throw ApiError.badRequest('가림 처리된 글에는 댓글을 쓸 수 없습니다.')
   }
 
   const content = requireContent(body.content, '댓글')
@@ -78,14 +97,14 @@ export async function create(viewerId, diaryId, body = {}) {
   await execute(
     'INSERT INTO comments (id, diary_id, parent_id, author_id, content, created_at)' +
       ' VALUES (?, ?, ?, ?, ?, ?)',
-    [id, diaryId, parentId, viewerId, content, createdAt],
+    [id, diaryId, parentId, viewer.id, content, createdAt],
   )
 
   const row = await queryOne(SELECT_COMMENT + ' WHERE c.id = ?', [id])
-  return { comment: serializeComment(row) }
+  return { comment: serializeComment(row, viewer) }
 }
 
-export async function remove(viewerId, diaryId, commentId) {
+export async function remove(viewer, diaryId, commentId) {
   const comment = await queryOne(
     'SELECT id, author_id FROM comments WHERE id = ? AND diary_id = ?',
     [commentId, diaryId],
@@ -93,7 +112,7 @@ export async function remove(viewerId, diaryId, commentId) {
   if (!comment) throw ApiError.notFound('댓글을 찾을 수 없습니다.')
 
   // 다른 회원이 쓴 댓글은 삭제할 수 없다.
-  if (comment.author_id !== viewerId) throw ApiError.forbidden('삭제 권한이 없습니다.')
+  if (comment.author_id !== viewer.id) throw ApiError.forbidden('삭제 권한이 없습니다.')
 
   await withTransaction(async (connection) => {
     // 딸린 대댓글을 먼저 지운다.

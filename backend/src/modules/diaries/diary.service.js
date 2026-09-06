@@ -3,14 +3,17 @@
  *
  * 권한 규칙
  * - 목록(GET /diaries)      : 내가 쓴 글만 보인다.
- * - 피드(GET /diaries/feed) : 공개 글만 보인다.
- * - 상세                    : 비공개 글은 작성자 본인만
+ * - 피드(GET /diaries/feed) : 공개 글만 보인다. (가림 처리된 글 제외)
+ * - 상세                    : 비공개 글은 작성자 본인만 / 가림 처리된 글은 작성자·관리자만
  * - 수정 / 삭제             : 작성자 본인만
  * - 좋아요                  : 공개 글에만
+ *
+ * viewer = { id, isAdmin } (로그인한 회원)
  */
 import { execute, query, queryOne, withTransaction } from '../../db/pool.js'
 import { ApiError } from '../../utils/ApiError.js'
 import { monthRange, toIso } from '../../utils/date.js'
+import { displayNickname } from '../../utils/nickname.js'
 import { newId } from '../../utils/id.js'
 import {
   CATEGORIES,
@@ -27,7 +30,7 @@ import {
  */
 const SELECT_DIARY = `
   SELECT d.id, d.author_id, d.title, d.content, d.category, d.mood,
-         d.date_key, d.visibility, d.created_at, d.updated_at,
+         d.date_key, d.visibility, d.is_hidden, d.created_at, d.updated_at,
          u.nickname AS author_nickname,
          (SELECT COUNT(*) FROM diary_likes l WHERE l.diary_id = d.id) AS like_count,
          (SELECT COUNT(*) FROM comments c WHERE c.diary_id = d.id) AS comment_count,
@@ -63,17 +66,25 @@ async function loadImages(diaryIds) {
 }
 
 /** DB 한 줄을 프론트엔드가 기대하는 모양으로 바꾼다. */
-function serializeDiary(row, images = []) {
+function serializeDiary(row, images, viewer) {
+  const isSelf = row.author_id === viewer.id
+  // 공개 글에서는 작성자 닉네임을 익명 처리한다. (본인/관리자는 그대로)
+  const nickname =
+    row.visibility === 'public'
+      ? displayNickname(row.author_nickname, { isSelf, isAdmin: viewer.isAdmin })
+      : row.author_nickname
+
   return {
     id: row.id,
     authorId: row.author_id,
-    author: { id: row.author_id, nickname: row.author_nickname },
+    author: { id: row.author_id, nickname },
     title: row.title,
     content: row.content,
     category: row.category,
     mood: row.mood,
     dateKey: row.date_key,
     visibility: row.visibility,
+    isHidden: Boolean(Number(row.is_hidden)),
     images,
     likeCount: Number(row.like_count),
     likedByMe: Boolean(Number(row.liked_by_me)),
@@ -83,14 +94,14 @@ function serializeDiary(row, images = []) {
   }
 }
 
-async function serializeMany(rows) {
+async function serializeMany(rows, viewer) {
   const images = await loadImages(rows.map((row) => row.id))
-  return rows.map((row) => serializeDiary(row, images.get(row.id) || []))
+  return rows.map((row) => serializeDiary(row, images.get(row.id) || [], viewer))
 }
 
 /** 글 한 건을 읽는다. 없으면 404 */
-async function findDiaryOrFail(viewerId, id) {
-  const row = await queryOne(SELECT_DIARY + ' WHERE d.id = ?', [viewerId, id])
+async function findDiaryOrFail(viewer, id) {
+  const row = await queryOne(SELECT_DIARY + ' WHERE d.id = ?', [viewer.id, id])
   if (!row) throw ApiError.notFound('다이어리를 찾을 수 없습니다.')
   return row
 }
@@ -107,25 +118,34 @@ async function replaceImages(connection, diaryId, images) {
   }
 }
 
+/** category / keyword 필터를 조건 배열에 더한다. */
+function applyListFilters(params, conditions, values) {
+  const category = optionalOneOf(params.category, CATEGORIES, '글 종류가 올바르지 않습니다.')
+  if (category) {
+    conditions.push('d.category = ?')
+    values.push(category)
+  }
+
+  const keyword = optionalKeyword(params.keyword)
+  if (keyword) {
+    conditions.push(KEYWORD_CONDITION)
+    values.push(keyword)
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* 조회                                                                       */
 /* -------------------------------------------------------------------------- */
 
 /** 내가 쓴 글 목록 */
-export async function listMine(viewerId, params = {}) {
+export async function listMine(viewer, params = {}) {
   const conditions = ['d.author_id = ?']
-  const values = [viewerId, viewerId]
+  const values = [viewer.id, viewer.id]
 
   const dateKey = optionalDateKey(params.dateKey)
   if (dateKey) {
     conditions.push('d.date_key = ?')
     values.push(dateKey)
-  }
-
-  const category = optionalOneOf(params.category, CATEGORIES, '글 종류가 올바르지 않습니다.')
-  if (category) {
-    conditions.push('d.category = ?')
-    values.push(category)
   }
 
   const visibility = optionalOneOf(
@@ -138,48 +158,58 @@ export async function listMine(viewerId, params = {}) {
     values.push(visibility)
   }
 
-  const keyword = optionalKeyword(params.keyword)
-  if (keyword) {
-    conditions.push(KEYWORD_CONDITION)
-    values.push(keyword)
-  }
+  applyListFilters(params, conditions, values)
 
   const rows = await query(
     SELECT_DIARY + ' WHERE ' + conditions.join(' AND ') + ORDER_BY_LATEST,
     values,
   )
-  return { items: await serializeMany(rows) }
+  return { items: await serializeMany(rows, viewer) }
+}
+
+/**
+ * 특정 회원이 쓴 글 목록. (마이페이지)
+ * - 본인이나 관리자면 모든 글
+ * - 그 외에는 공개 & 가림되지 않은 글만
+ */
+export async function listByAuthor(viewer, authorId, params = {}) {
+  const isSelf = viewer.id === authorId
+  const conditions = ['d.author_id = ?']
+  const values = [viewer.id, authorId]
+
+  if (!isSelf && !viewer.isAdmin) {
+    conditions.push("d.visibility = 'public'")
+    conditions.push('d.is_hidden = 0')
+  }
+
+  applyListFilters(params, conditions, values)
+
+  const rows = await query(
+    SELECT_DIARY + ' WHERE ' + conditions.join(' AND ') + ORDER_BY_LATEST,
+    values,
+  )
+  return { items: await serializeMany(rows, viewer) }
 }
 
 /** 다른 회원에게 공개된 글 목록 */
-export async function listFeed(viewerId, params = {}) {
-  const conditions = ["d.visibility = 'public'"]
-  const values = [viewerId]
+export async function listFeed(viewer, params = {}) {
+  const conditions = ["d.visibility = 'public'", 'd.is_hidden = 0']
+  const values = [viewer.id]
 
-  const category = optionalOneOf(params.category, CATEGORIES, '글 종류가 올바르지 않습니다.')
-  if (category) {
-    conditions.push('d.category = ?')
-    values.push(category)
-  }
-
-  const keyword = optionalKeyword(params.keyword)
-  if (keyword) {
-    conditions.push(KEYWORD_CONDITION)
-    values.push(keyword)
-  }
+  applyListFilters(params, conditions, values)
 
   const rows = await query(
     SELECT_DIARY + ' WHERE ' + conditions.join(' AND ') + ORDER_BY_LATEST,
     values,
   )
-  return { items: await serializeMany(rows) }
+  return { items: await serializeMany(rows, viewer) }
 }
 
 /**
  * 달력에 표시할 날짜별 글 개수.
- * scope 가 'mine'(기본) 이면 내 글만, 'public' 이면 공개 글만 센다.
+ * scope 가 'mine'(기본) 이면 내 글만, 'public' 이면 공개(가림 제외) 글만 센다.
  */
-export async function monthlyCounts(viewerId, params = {}) {
+export async function monthlyCounts(viewer, params = {}) {
   const year = Number(params.year)
   const month = Number(params.month)
 
@@ -192,8 +222,9 @@ export async function monthlyCounts(viewerId, params = {}) {
 
   const { start, end } = monthRange(year, month)
   const scope = params.scope === 'public' ? 'public' : 'mine'
-  const ownerCondition = scope === 'mine' ? 'd.author_id = ?' : "d.visibility = 'public'"
-  const values = scope === 'mine' ? [start, end, viewerId] : [start, end]
+  const ownerCondition =
+    scope === 'mine' ? 'd.author_id = ?' : "d.visibility = 'public' AND d.is_hidden = 0"
+  const values = scope === 'mine' ? [start, end, viewer.id] : [start, end]
 
   const rows = await query(
     "SELECT DATE_FORMAT(d.date_key, '%Y-%m-%d') AS date_key, COUNT(*) AS count" +
@@ -210,23 +241,27 @@ export async function monthlyCounts(viewerId, params = {}) {
   return { counts }
 }
 
-/** 글 한 건 (비공개 글은 작성자만 볼 수 있다) */
-export async function get(viewerId, id) {
-  const row = await findDiaryOrFail(viewerId, id)
+/** 글 한 건 (비공개 글은 작성자만 / 가림 처리된 글은 작성자·관리자만) */
+export async function get(viewer, id) {
+  const row = await findDiaryOrFail(viewer, id)
+  const isSelf = row.author_id === viewer.id
 
-  if (row.visibility === 'private' && row.author_id !== viewerId) {
+  if (row.visibility === 'private' && !isSelf) {
     throw ApiError.forbidden('비공개 글입니다.')
+  }
+  if (Number(row.is_hidden) && !isSelf && !viewer.isAdmin) {
+    throw ApiError.forbidden('신고가 접수되어 가림 처리된 글입니다.')
   }
 
   const images = await loadImages([row.id])
-  return { diary: serializeDiary(row, images.get(row.id) || []) }
+  return { diary: serializeDiary(row, images.get(row.id) || [], viewer) }
 }
 
 /* -------------------------------------------------------------------------- */
 /* 작성 / 수정 / 삭제                                                         */
 /* -------------------------------------------------------------------------- */
 
-export async function create(viewerId, body) {
+export async function create(viewer, body) {
   const payload = requireDiaryPayload(body)
   const id = newId()
   const now = new Date()
@@ -238,7 +273,7 @@ export async function create(viewerId, body) {
         ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         id,
-        viewerId,
+        viewer.id,
         payload.title,
         payload.content,
         payload.category,
@@ -252,14 +287,14 @@ export async function create(viewerId, body) {
     await replaceImages(connection, id, payload.images)
   })
 
-  return get(viewerId, id)
+  return get(viewer, id)
 }
 
-export async function update(viewerId, id, body) {
-  const current = await findDiaryOrFail(viewerId, id)
+export async function update(viewer, id, body) {
+  const current = await findDiaryOrFail(viewer, id)
 
   // 다른 회원이 쓴 글은 수정할 수 없다.
-  if (current.author_id !== viewerId) throw ApiError.forbidden('수정 권한이 없습니다.')
+  if (current.author_id !== viewer.id) throw ApiError.forbidden('수정 권한이 없습니다.')
 
   const payload = requireDiaryPayload(body)
 
@@ -281,35 +316,38 @@ export async function update(viewerId, id, body) {
     await replaceImages(connection, id, payload.images)
   })
 
-  return get(viewerId, id)
+  return get(viewer, id)
 }
 
-export async function remove(viewerId, id) {
-  const current = await findDiaryOrFail(viewerId, id)
+export async function remove(viewer, id) {
+  const current = await findDiaryOrFail(viewer, id)
 
   // 다른 회원이 쓴 글은 삭제할 수 없다.
-  if (current.author_id !== viewerId) throw ApiError.forbidden('삭제 권한이 없습니다.')
+  if (current.author_id !== viewer.id) throw ApiError.forbidden('삭제 권한이 없습니다.')
 
-  // 이미지 / 댓글 / 좋아요는 외래키 설정에 따라 함께 지워진다.
+  // 이미지 / 댓글 / 좋아요 / 신고는 외래키 설정에 따라 함께 지워진다.
   await execute('DELETE FROM diaries WHERE id = ?', [id])
   return {}
 }
 
 /** 좋아요를 누르거나 취소한다. */
-export async function toggleLike(viewerId, id) {
-  const diary = await findDiaryOrFail(viewerId, id)
+export async function toggleLike(viewer, id) {
+  const diary = await findDiaryOrFail(viewer, id)
 
   if (diary.visibility !== 'public') {
     throw ApiError.badRequest('공개된 글에만 좋아요를 누를 수 있습니다.')
   }
+  if (Number(diary.is_hidden)) {
+    throw ApiError.badRequest('가림 처리된 글에는 좋아요를 누를 수 없습니다.')
+  }
 
   const liked = Boolean(Number(diary.liked_by_me))
   if (liked) {
-    await execute('DELETE FROM diary_likes WHERE diary_id = ? AND user_id = ?', [id, viewerId])
+    await execute('DELETE FROM diary_likes WHERE diary_id = ? AND user_id = ?', [id, viewer.id])
   } else {
     await execute('INSERT INTO diary_likes (diary_id, user_id, created_at) VALUES (?, ?, ?)', [
       id,
-      viewerId,
+      viewer.id,
       new Date(),
     ])
   }

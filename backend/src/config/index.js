@@ -47,6 +47,33 @@ export const config = {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   },
 
+  /**
+   * 관리자 이메일 목록 (쉼표 구분).
+   * 이 이메일로 가입/로그인한 회원은 신고된 글을 검토하고 가림을 해제할 수 있다.
+   */
+  adminEmails: (process.env.ADMIN_EMAILS || 'dnjstjr1031@gmail.com')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean),
+
+  report: {
+    /** 신고가 접수되면 이 주소로 메일을 보낸다. */
+    to: (process.env.REPORT_EMAIL || 'dnjstjr1031@gmail.com').trim(),
+  },
+
+  /**
+   * 메일 발송(SMTP) 설정. SMTP_HOST 가 비어 있으면 메일을 실제로 보내지 않고
+   * 콘솔에만 남긴다. (개발 중에는 설정 없이도 나머지 기능이 정상 동작한다)
+   */
+  mail: {
+    host: process.env.SMTP_HOST || '',
+    port: toNumber(process.env.SMTP_PORT, 587),
+    secure: process.env.SMTP_SECURE === 'true',
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.MAIL_FROM || process.env.SMTP_USER || 'no-reply@diary.local',
+  },
+
   upload: {
     /** 업로드 파일이 저장되는 폴더 (backend/uploads) */
     directory: process.env.UPLOAD_DIR || 'uploads',

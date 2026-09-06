@@ -2,13 +2,13 @@
 import * as commentService from './comment.service.js'
 
 export async function list(req, res) {
-  res.json(await commentService.list(req.user.id, req.params.id))
+  res.json(await commentService.list(req.user, req.params.id))
 }
 
 export async function create(req, res) {
-  res.status(201).json(await commentService.create(req.user.id, req.params.id, req.body))
+  res.status(201).json(await commentService.create(req.user, req.params.id, req.body))
 }
 
 export async function remove(req, res) {
-  res.json(await commentService.remove(req.user.id, req.params.id, req.params.commentId))
+  res.json(await commentService.remove(req.user, req.params.id, req.params.commentId))
 }

@@ -29,11 +29,13 @@ CREATE TABLE IF NOT EXISTS diaries (
   mood       VARCHAR(20) NOT NULL DEFAULT '',
   date_key   DATE        NOT NULL,
   visibility ENUM('public', 'private')         NOT NULL DEFAULT 'private',
+  -- 신고가 접수되면 1 이 되어 작성자와 관리자 외에는 보이지 않는다.
+  is_hidden  TINYINT(1)  NOT NULL DEFAULT 0,
   created_at DATETIME(3) NOT NULL,
   updated_at DATETIME(3) NOT NULL,
   PRIMARY KEY (id),
   KEY idx_diaries_author_date (author_id, date_key, created_at),
-  KEY idx_diaries_public_date (visibility, date_key, created_at),
+  KEY idx_diaries_public_date (visibility, is_hidden, date_key, created_at),
   CONSTRAINT fk_diaries_author FOREIGN KEY (author_id)
     REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
@@ -80,5 +82,25 @@ CREATE TABLE IF NOT EXISTS diary_likes (
   CONSTRAINT fk_diary_likes_diary FOREIGN KEY (diary_id)
     REFERENCES diaries (id) ON DELETE CASCADE,
   CONSTRAINT fk_diary_likes_user FOREIGN KEY (user_id)
+    REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+-- 신고 (한 사람이 한 글에 한 번)
+CREATE TABLE IF NOT EXISTS diary_reports (
+  id          CHAR(36)    NOT NULL,
+  diary_id    CHAR(36)    NOT NULL,
+  reporter_id CHAR(36)    NOT NULL,
+  reason      ENUM('obscene', 'defamation', 'political', 'violent',
+                   'scam', 'threat', 'illegal', 'etc')  NOT NULL,
+  detail      VARCHAR(500) NOT NULL DEFAULT '',
+  status      ENUM('pending', 'reviewed', 'dismissed')  NOT NULL DEFAULT 'pending',
+  created_at  DATETIME(3) NOT NULL,
+  handled_at  DATETIME(3) NULL DEFAULT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_diary_reports_once (diary_id, reporter_id),
+  KEY idx_diary_reports_status (status, created_at),
+  CONSTRAINT fk_diary_reports_diary FOREIGN KEY (diary_id)
+    REFERENCES diaries (id) ON DELETE CASCADE,
+  CONSTRAINT fk_diary_reports_reporter FOREIGN KEY (reporter_id)
     REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;

@@ -20,6 +20,31 @@ function safeDatabaseName(name) {
   return name
 }
 
+/** 컬럼이 없으면 ALTER 로 추가한다. (있으면 아무 일도 하지 않는다) */
+async function addColumnIfMissing(connection, database, table, column, definition) {
+  const [rows] = await connection.query(
+    'SELECT 1 FROM information_schema.columns' +
+      ' WHERE table_schema = ? AND table_name = ? AND column_name = ?',
+    [database, table, column],
+  )
+  if (rows.length > 0) return
+  await connection.query(
+    'ALTER TABLE `' + table + '` ADD COLUMN ' + column + ' ' + definition,
+  )
+  console.log('[migrate] ' + table + '.' + column + ' 컬럼을 추가했습니다.')
+}
+
+/** 스키마 변경 이력 - 기존 DB 를 최신 구조로 맞춘다. */
+async function patchColumns(connection, database) {
+  await addColumnIfMissing(
+    connection,
+    database,
+    'diaries',
+    'is_hidden',
+    'TINYINT(1) NOT NULL DEFAULT 0 AFTER visibility',
+  )
+}
+
 async function main() {
   const database = safeDatabaseName(config.db.database)
 
@@ -47,6 +72,9 @@ async function main() {
 
     const schema = await fs.readFile(new URL('./schema.sql', import.meta.url), 'utf8')
     await connection.query(schema)
+
+    // 이미 만들어진 테이블에 새 컬럼을 더한다. (CREATE TABLE IF NOT EXISTS 로는 안 되는 부분)
+    await patchColumns(connection, database)
 
     const [tables] = await connection.query('SHOW TABLES')
     console.log('[migrate] ' + database + ' 준비 완료 - 테이블 ' + tables.length + '개')

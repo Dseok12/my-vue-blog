@@ -6,9 +6,14 @@ import { execute, queryOne } from '../../db/pool.js'
 import { ApiError } from '../../utils/ApiError.js'
 import { toIso } from '../../utils/date.js'
 import { newId } from '../../utils/id.js'
+import { config } from '../../config/index.js'
 import { requireEmail, requireNickname, requirePassword } from '../../utils/validate.js'
 
-const SALT_ROUNDS = 10
+export const SALT_ROUNDS = 10
+
+export function hashPassword(plain) {
+  return bcrypt.hash(plain, SALT_ROUNDS)
+}
 
 /** 비밀번호처럼 밖으로 나가면 안 되는 값을 걸러 낸다. */
 export function toPublicUser(row) {
@@ -18,6 +23,8 @@ export function toPublicUser(row) {
     email: row.email,
     nickname: row.nickname,
     createdAt: toIso(row.created_at),
+    isAdmin:
+      row.isAdmin ?? config.adminEmails.includes(String(row.email).toLowerCase()),
   }
 }
 
@@ -34,7 +41,7 @@ export async function signup(body = {}) {
 
   const id = newId()
   const createdAt = new Date()
-  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS)
+  const passwordHash = await hashPassword(password)
 
   await execute(
     'INSERT INTO users (id, email, nickname, password_hash, created_at) VALUES (?, ?, ?, ?, ?)',
