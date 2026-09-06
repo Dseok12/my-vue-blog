@@ -31,7 +31,14 @@ Level 3  라우터와 상태관리  [ ]1회독  [ ]2회독  [ ]3회독
 Level 4  서버 통신과 인증   [ ]1회독  [ ]2회독  [ ]3회독
 Level 5  품질과 최적화      [ ]1회독  [ ]2회독  [ ]3회독
 최종 관문  백지에서 앱 전체 만들기            [ ]
+─────────────────────────  여기까지 = 이 프로젝트 수준  ─────────────────────────
+Level 6  대형 아키텍처      [ ]1회독  [ ]2회독  [ ]3회독
+Level 7  팀·릴리스·운영     [ ]1회독  [ ]2회독  [ ]3회독
+최종 관문 II  대형 프로젝트 시뮬레이션         [ ]
 ```
+
+> Level 6~7 은 이 프로젝트 코드에 없는 내용이다. 실무 대형 프로젝트에서 쓰는
+> 아키텍처·도구·프로세스를 다룬다. 최종 관문(Level 1~5)을 통과한 뒤에 시작한다.
 
 ### 0-3. 시작 전 필요한 것
 
@@ -1566,6 +1573,929 @@ try {
 
 ---
 
+## Level 6 — 대형 프로젝트 아키텍처 (실무 고급)
+
+### 목표
+
+파일이 500개, 화면이 50개, 개발자가 5명이 되어도 무너지지 않는 구조를 만든다.
+이 레벨부터는 "동작하는 코드"가 아니라 **"바꾸기 쉬운 코드"** 가 목표다.
+
+> **대형 프로젝트의 유일한 진짜 문제는 "변경 비용"이다.**
+> 기능 추가가 처음엔 1시간, 6개월 뒤엔 3일이 걸린다면 구조가 잘못된 것이다.
+> 아래 모든 기법은 결국 "한 곳만 고치면 되게 만든다"는 한 가지 목적을 위한 것이다.
+
+### 6-1. 폴더 구조 — 기술별에서 기능별로
+
+이 프로젝트는 `components/`, `views/`, `stores/`, `api/` 처럼 **기술 종류로** 나눴다.
+파일 100개까지는 괜찮다. 그 이상이면 **기능(feature) 단위로** 다시 묶는다.
+
+```
+src/
+├─ app/                     앱 부팅 — main.js, App.vue, 전역 플러그인 등록
+│  ├─ router/
+│  ├─ providers/            pinia, i18n, query client 초기화
+│  └─ layouts/
+├─ pages/                   라우트와 1:1. 조립만 한다. 로직 없음.
+│  ├─ diary-list/
+│  ├─ diary-detail/
+│  └─ login/
+├─ features/                "사용자가 하는 행동" 단위
+│  ├─ diary-editor/         쓰기/수정 폼 + 검증 + 제출
+│  │  ├─ ui/                이 기능 전용 컴포넌트
+│  │  ├─ model/             이 기능 전용 스토어/컴포저블
+│  │  ├─ api/               이 기능이 쓰는 API 호출
+│  │  └─ index.js           공개 API — 밖에서는 이 파일만 import
+│  ├─ diary-like/
+│  ├─ comment-thread/
+│  └─ auth-by-password/
+├─ entities/                "명사" 단위 — 도메인 데이터와 그 표현
+│  ├─ diary/                DiaryCard, diary 타입, diary 직렬화
+│  ├─ comment/
+│  └─ user/
+├─ shared/                  도메인을 모르는 순수 재사용 코드
+│  ├─ ui/                   BaseButton, BaseInput, BaseModal ...
+│  ├─ lib/                  date, debounce, 검증 헬퍼
+│  ├─ api/                  axios 인스턴스, 인터셉터, ApiError
+│  └─ config/
+└─ widgets/                 여러 feature/entity 를 합친 큰 덩어리
+   ├─ app-header/
+   └─ calendar-sidebar/
+```
+
+이 구조를 **Feature-Sliced Design(FSD)** 라고 부른다. 핵심은 **의존성 방향 규칙** 하나다.
+
+```
+app → pages → widgets → features → entities → shared
+     (위는 아래를 import 할 수 있다. 반대는 절대 안 된다.)
+```
+
+| 규칙 | 이유 |
+| --- | --- |
+| `shared` 는 아무것도 import 하지 않는다 | 어디서든 안전하게 쓸 수 있어야 한다 |
+| `entities` 끼리 서로 import 하지 않는다 | `comment` 가 `diary` 를 알면 둘을 따로 못 뗀다 |
+| `features` 끼리 서로 import 하지 않는다 | 기능은 독립적으로 켜고 끌 수 있어야 한다 |
+| 같은 층끼리 필요하면 → 상위 층(`widgets`, `pages`)에서 조립한다 | 조립은 위에서 |
+| 각 슬라이스는 `index.js` 로만 밖에 노출한다 | 내부 파일을 바꿔도 밖이 안 깨진다 |
+
+> **이 규칙을 손으로 지키긴 어렵다. 도구로 강제한다.**
+> ```js
+> // eslint.config.js — "아래 층이 위 층을 import" 하면 빌드를 막는다
+> // (target = 검사 대상 폴더, from = 그 폴더가 import 하면 안 되는 곳)
+> 'import/no-restricted-paths': ['error', {
+>   zones: [
+>     { target: './src/shared',   from: ['./src/entities', './src/features', './src/widgets', './src/pages'] },
+>     { target: './src/entities', from: ['./src/features', './src/widgets', './src/pages'] },
+>     { target: './src/features', from: ['./src/widgets', './src/pages'] },
+>   ],
+> }]
+> // 참고: features → entities → shared 방향(위에서 아래)은 허용된다.
+> ```
+
+**언제 이 구조로 바꾸나?** 처음부터 하지 않는다. 이 프로젝트처럼 시작하고,
+"이 컴포넌트가 어느 폴더에 속하는지 3초 안에 답이 안 나올 때" 옮긴다.
+
+### 6-2. TypeScript — 경계에 타입을 세운다
+
+대형 프로젝트에서 TS 는 선택이 아니다. `diary.titel` 오타 하나가 배포 후에 발견되면 늦다.
+
+```bash
+npm create vite@latest my-app -- --template vue-ts
+```
+
+**핵심 원칙: 타입은 "데이터가 들어오는 경계"에 정의하고, 안쪽은 추론에 맡긴다.**
+
+```ts
+// entities/diary/model/types.ts — 도메인 타입은 한 곳에서
+export type DiaryCategory = 'diary' | 'book' | 'emotion'
+export type Visibility = 'public' | 'private'
+
+export interface DiaryImage {
+  url: string
+  name: string
+}
+
+export interface Diary {
+  id: string
+  authorId: string
+  author: { id: string; nickname: string }
+  title: string
+  content: string
+  category: DiaryCategory
+  mood: string
+  dateKey: string           // 'YYYY-MM-DD'
+  visibility: Visibility
+  images: DiaryImage[]
+  likeCount: number
+  likedByMe: boolean
+  commentCount: number
+  createdAt: string         // ISO
+  updatedAt: string
+}
+```
+
+**런타임 검증과 타입을 동시에 — zod**
+
+TS 타입은 컴파일 후 사라진다. 서버 응답이 실제로 그 모양인지는 **런타임에** 확인해야 한다.
+
+```ts
+// entities/diary/model/schema.ts
+import { z } from 'zod'
+
+export const diarySchema = z.object({
+  id: z.string(),
+  authorId: z.string(),
+  author: z.object({ id: z.string(), nickname: z.string() }),
+  title: z.string(),
+  content: z.string(),
+  category: z.enum(['diary', 'book', 'emotion']),
+  visibility: z.enum(['public', 'private']),
+  images: z.array(z.object({ url: z.string(), name: z.string() })),
+  likeCount: z.number(),
+  likedByMe: z.boolean(),
+  commentCount: z.number(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+
+// 타입을 스키마에서 자동으로 뽑는다 — 스키마와 타입이 절대 어긋나지 않는다
+export type Diary = z.infer<typeof diarySchema>
+```
+
+```ts
+// api 계층에서 — 파싱하면서 검증한다
+const raw = await client.get('/diaries/' + id)
+const diary = diarySchema.parse(raw.diary)   // 모양이 다르면 여기서 즉시 터진다
+```
+
+> **왜 이렇게까지 하나?** 백엔드가 필드 이름을 몰래 바꿨을 때, 화면 여기저기서
+> `undefined` 로 조용히 깨지는 대신 **API 경계에서 명확한 오류**로 잡힌다.
+> 디버깅 시간이 10분에서 10초로 준다.
+
+**제네릭 컴포넌트 타입**
+
+```vue
+<script setup lang="ts" generic="T">
+defineProps<{
+  items: T[]
+  itemKey: (item: T) => string | number
+}>()
+defineEmits<{ select: [item: T] }>()
+</script>
+```
+
+**스토어 타입** — setup store 는 자동 추론된다. 반환 타입만 신경 쓴다.
+
+```ts
+export const useDiaryStore = defineStore('diary', () => {
+  const items = ref<Diary[]>([])
+  const current = ref<Diary | null>(null)
+  // 반환하는 것에서 타입이 자동으로 잡힌다
+  return { items, current }
+})
+```
+
+### 6-3. 서버 상태와 클라이언트 상태를 분리한다
+
+이 프로젝트는 `diary` 스토어에 **서버 데이터(목록, 상세)** 와 **화면 상태(필터, 로딩)** 를 같이 담았다.
+소규모에서는 괜찮지만, 커지면 다음 문제가 생긴다.
+
+- 같은 데이터를 여러 스토어가 중복 저장
+- "이 목록이 최신인가?" 를 아무도 모른다 → 새로고침을 남발하거나, 낡은 데이터를 보여준다
+- 캐시, 재요청, 중복 제거, 재시도를 전부 손으로 짠다
+
+**해법: 서버 상태는 전용 라이브러리에 맡긴다 — TanStack Query (Vue Query)**
+
+```bash
+npm install @tanstack/vue-query
+```
+
+```ts
+// entities/diary/api/queries.ts
+import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
+
+export function useDiaryList(filters: Ref<DiaryFilters>) {
+  return useQuery({
+    queryKey: ['diaries', filters],           // 필터가 바뀌면 자동으로 다시 불러온다
+    queryFn: () => diaryApi.listMine(filters.value),
+    staleTime: 60_000,                        // 1분간은 "신선함" — 다시 안 부른다
+  })
+}
+
+export function useToggleLike() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => diaryApi.toggleLike(id),
+    // 낙관적 업데이트 — 클릭 즉시 화면을 바꾸고, 실패하면 되돌린다
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['diaries'] })
+      const prev = qc.getQueryData(['diaries'])
+      qc.setQueryData(['diaries'], (old: Diary[]) =>
+        old.map((d) => (d.id === id ? { ...d, likedByMe: !d.likedByMe } : d)),
+      )
+      return { prev }
+    },
+    onError: (_err, _id, ctx) => qc.setQueryData(['diaries'], ctx?.prev),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['diaries'] }),
+  })
+}
+```
+
+**분리 후 각자의 역할**
+
+| 상태 종류 | 도구 | 예 |
+| --- | --- | --- |
+| 서버에서 온 데이터 | Vue Query | 다이어리 목록, 상세, 댓글, 피드 |
+| 여러 화면이 공유하는 순수 클라이언트 상태 | Pinia | 로그인 사용자 정보, 사이드바 열림, 토스트, 테마 |
+| 한 화면/컴포넌트 안의 상태 | `ref` | 폼 입력값, 드롭다운 열림 |
+| 주소로 표현되는 상태 | 라우터 query | 선택 날짜, 검색어, 페이지 번호 |
+
+> Pinia 를 버리는 게 아니다. **Pinia 에서 "서버 데이터 캐싱" 책임만 덜어낸다.**
+> `auth` 스토어는 그대로 Pinia 가 맞다.
+
+### 6-4. 컴포넌트 설계 심화
+
+**① 컴포저블(composable) — 로직을 컴포넌트에서 뗀다**
+
+`use` 로 시작하는 함수. 반응성 있는 로직을 재사용한다.
+
+```ts
+// shared/lib/useDebouncedRef.ts
+export function useDebouncedRef<T>(source: Ref<T>, delay = 300): Ref<T> {
+  const debounced = ref(source.value) as Ref<T>
+  let timer: ReturnType<typeof setTimeout>
+  watch(source, (value) => {
+    clearTimeout(timer)
+    timer = setTimeout(() => { debounced.value = value }, delay)
+  })
+  onScopeDispose(() => clearTimeout(timer))   // 컴포넌트가 사라지면 정리
+  return debounced
+}
+```
+
+```ts
+// features/diary-search/model/useDiarySearch.ts — 이 기능의 모든 로직이 여기 모인다
+export function useDiarySearch() {
+  const route = useRoute()
+  const router = useRouter()
+  const keyword = ref(String(route.query.q ?? ''))
+  const debounced = useDebouncedRef(keyword, 400)
+
+  watch(debounced, (q) => {
+    router.replace({ query: { ...route.query, q: q || undefined } })
+  })
+
+  const query = useDiaryList(computed(() => ({ keyword: debounced.value })))
+  return { keyword, ...query }
+}
+```
+
+**컴포저블 규칙**
+
+- `use` 접두사, 반응성 있는 값을 `ref`/`computed` 로 반환
+- 생명주기 훅(`onMounted` 등)은 컴포저블 안에서 써도 된다 — 호출한 컴포넌트에 붙는다
+- 정리(clean-up)는 `onScopeDispose` 로
+- **컴포저블은 UI 를 모른다.** 마크업은 컴포넌트에, 로직은 컴포저블에.
+
+**② 프레젠테이션 / 컨테이너 분리**
+
+```
+DiaryListPage.vue     ← 컨테이너: 데이터를 가져오고, 이벤트를 처리한다
+  └─ DiaryList.vue    ← 프레젠테이션: props 로 받은 것만 그린다. 스토어를 모른다.
+       └─ DiaryCard.vue
+```
+
+프레젠테이션 컴포넌트는 스토어·라우터·API 를 import 하지 않는다.
+→ Storybook 에서 단독으로 렌더링되고, 테스트가 쉽고, 재사용된다.
+
+**③ 디자인 시스템 — `shared/ui` 를 별도 패키지로**
+
+`BaseButton`, `BaseInput` 같은 것이 20개가 넘고 여러 앱에서 쓰이면
+`packages/ui` 로 분리하고 Storybook 으로 문서화한다.
+
+```bash
+npm install -D @storybook/vue3-vite
+```
+
+```ts
+// BaseButton.stories.ts
+export default { component: BaseButton, title: 'shared/BaseButton' }
+export const Primary = { args: { variant: 'primary' }, render: (a) => ({ ... }) }
+export const Loading = { args: { loading: true } }
+```
+
+> **디자인 시스템의 진짜 가치:** 디자이너와 개발자가 **같은 컴포넌트 이름**으로 대화하게 된다.
+> "카드 컴포넌트의 padding-lg 변형" 이라고 하면 서로 정확히 같은 것을 떠올린다.
+
+### 6-5. 대형 폼 — 라이브러리를 쓴다
+
+이 프로젝트의 검증 유틸은 필드 4개까지는 훌륭하다.
+필드 20개, 배열 필드(이미지 목록), 조건부 필드, 서버 오류 매핑이 들어오면 라이브러리가 낫다.
+
+```bash
+npm install vee-validate zod @vee-validate/zod
+```
+
+```vue
+<script setup lang="ts">
+import { useForm } from 'vee-validate'
+import { toTypedSchema } from '@vee-validate/zod'
+import { z } from 'zod'
+
+const schema = toTypedSchema(z.object({
+  title: z.string().min(1, '제목을 입력해 주세요.').max(60, '60자 이하'),
+  content: z.string().min(1, '내용을 입력해 주세요.'),
+  visibility: z.enum(['public', 'private']),
+  images: z.array(z.object({ url: z.string(), name: z.string() })).max(5, '최대 5장'),
+}))
+
+const { handleSubmit, errors, defineField, setErrors } = useForm({ validationSchema: schema })
+const [title] = defineField('title')
+
+const onSubmit = handleSubmit(async (values) => {
+  try {
+    await diaryApi.create(values)
+  } catch (e) {
+    if (e instanceof ApiError && e.fields) setErrors(e.fields)  // 서버 오류를 필드에 매핑
+  }
+})
+</script>
+```
+
+### 6-6. 라우팅 심화
+
+**① 중첩 라우트와 레이아웃**
+
+```ts
+const routes = [
+  {
+    path: '/',
+    component: DefaultLayout,       // 부모 = 레이아웃
+    meta: { requiresAuth: true },
+    children: [
+      { path: '', name: 'diary-list', component: () => import('@/pages/diary-list') },
+      {
+        path: 'diaries/:id',
+        component: () => import('@/pages/diary-detail'),
+        children: [                 // 상세 안의 탭
+          { path: '', name: 'diary-detail', component: DiaryContent },
+          { path: 'comments', name: 'diary-comments', component: DiaryComments },
+        ],
+      },
+    ],
+  },
+]
+```
+
+**② 권한을 라우트 메타로 선언하고, 가드에서 한 번에 검사**
+
+```ts
+meta: { requiresAuth: true, roles: ['admin'] }
+
+router.beforeEach((to) => {
+  const auth = useAuthStore()
+  if (to.meta.requiresAuth && !auth.isLoggedIn) return { name: 'login', query: { redirect: to.fullPath } }
+  if (to.meta.roles && !to.meta.roles.includes(auth.role)) return { name: 'forbidden' }
+})
+```
+
+**③ 코드 스플리팅 + 프리페치**
+
+`() => import()` 는 이미 청크를 쪼갠다. 여기에 **마우스가 링크에 올라가면 미리 받기** 를 더한다.
+
+```vue
+<RouterLink :to="link" @mouseenter="prefetch(link)">…</RouterLink>
+```
+
+**④ 데이터 로딩 위치** — 3가지 전략
+
+| 전략 | 방식 | 장단 |
+| --- | --- | --- |
+| 컴포넌트 안에서 | `onMounted` / Vue Query | 간단. 화면 깜빡임 있음 |
+| 라우트 진입 전 | `beforeEnter` 에서 fetch | 깜빡임 없음. 이동이 느려 보임 |
+| 라우트 진입 + 스켈레톤 | 진입은 즉시, 데이터는 로딩 UI | **대부분 이게 정답** |
+
+### 6-7. 에러 처리 아키텍처
+
+**① 전역 에러 핸들러 — 놓친 오류를 잡는 그물**
+
+```ts
+// app/providers/errorHandler.ts
+app.config.errorHandler = (err, instance, info) => {
+  console.error(err, info)
+  Sentry.captureException(err)                  // 에러 추적 서비스로
+  useUiStore().notify.error('예상치 못한 오류가 발생했습니다.')
+}
+
+window.addEventListener('unhandledrejection', (e) => Sentry.captureException(e.reason))
+```
+
+**② 에러 바운더리 컴포넌트 — 한 화면이 깨져도 앱 전체가 죽지 않게**
+
+```vue
+<!-- shared/ui/ErrorBoundary.vue -->
+<script setup>
+import { onErrorCaptured, ref } from 'vue'
+const error = ref(null)
+onErrorCaptured((err) => { error.value = err; return false })  // 위로 전파 막기
+</script>
+<template>
+  <slot v-if="!error" />
+  <div v-else class="error-boundary">
+    <p>이 영역을 불러오지 못했습니다.</p>
+    <BaseButton @click="error = null">다시 시도</BaseButton>
+  </div>
+</template>
+```
+
+```vue
+<ErrorBoundary><CalendarSidebar /></ErrorBoundary>   <!-- 캘린더가 깨져도 본문은 산다 -->
+```
+
+**③ 에러 추적 도입 — Sentry**
+
+```bash
+npm install @sentry/vue
+```
+
+```ts
+Sentry.init({
+  app,
+  dsn: import.meta.env.VITE_SENTRY_DSN,
+  integrations: [Sentry.browserTracingIntegration()],
+  tracesSampleRate: 0.1,
+  environment: import.meta.env.MODE,
+})
+```
+
+이걸 넣으면 "사용자가 뭘 눌렀을 때 어디서 터졌는지" 가 스택 트레이스와 함께 대시보드에 쌓인다.
+대형 프로젝트에서 **console.log 디버깅은 불가능**하다. 사용자 화면을 볼 수 없기 때문이다.
+
+### 6-8. 성능 심화
+
+**① 번들 분석 — 뭐가 무거운지 눈으로 본다**
+
+```bash
+npm install -D rollup-plugin-visualizer
+```
+
+```js
+// vite.config.js
+import { visualizer } from 'rollup-plugin-visualizer'
+plugins: [vue(), visualizer({ open: true, gzipSize: true })]
+```
+
+빌드하면 트리맵이 뜬다. `moment`(무겁다 → `date-fns`), `lodash`(전체 import → 함수별 import) 같은 범인을 찾는다.
+
+**② 렌더링 최적화**
+
+```vue
+<!-- 큰 목록: 화면에 보이는 것만 그린다 (가상 스크롤) -->
+<script setup>
+import { useVirtualizer } from '@tanstack/vue-virtual'
+</script>
+
+<!-- 자주 안 바뀌는 무거운 서브트리: v-memo -->
+<DiaryCard v-for="d in items" :key="d.id" v-memo="[d.likeCount, d.commentCount]" :diary="d" />
+
+<!-- 조건부로만 필요한 무거운 컴포넌트: 지연 + Suspense -->
+<Suspense><template #default><HeavyChart /></template><template #fallback><Spinner /></template></Suspense>
+```
+
+**③ Core Web Vitals 를 지표로 관리**
+
+| 지표 | 뜻 | 목표 | 프론트에서 하는 일 |
+| --- | --- | --- | --- |
+| LCP | 가장 큰 콘텐츠가 뜨는 시간 | < 2.5s | 히어로 이미지 프리로드, 폰트 최적화, 코드 스플리팅 |
+| INP | 클릭 후 반응까지 | < 200ms | 무거운 계산은 웹 워커/디바운스, 긴 목록 가상화 |
+| CLS | 레이아웃이 튀는 정도 | < 0.1 | 이미지·광고 자리에 `aspect-ratio` 미리 확보 |
+
+```ts
+import { onLCP, onINP, onCLS } from 'web-vitals'
+onLCP((m) => analytics.send('web-vital', m))
+```
+
+**④ 이미지 파이프라인**
+
+```vue
+<img
+  :src="thumb"
+  :srcset="`${w320} 320w, ${w640} 640w`"
+  sizes="(max-width: 600px) 100vw, 320px"
+  loading="lazy" decoding="async"
+  width="320" height="200"        
+/>
+```
+
+빌드 타임 처리는 `vite-imagetools`, 런타임 리사이즈는 백엔드/CDN(예: Cloudflare Images)에 맡긴다.
+
+### 6-9. i18n · 접근성 · 테마
+
+**① 국제화 — 글자를 코드에서 뺀다**
+
+```bash
+npm install vue-i18n
+```
+
+```ts
+// locales/ko.json, en.json
+{ "diary": { "empty": "아직 기록이 없습니다.", "count": "{n}개의 기록" } }
+```
+
+```vue
+<p>{{ t('diary.empty') }}</p>
+<p>{{ t('diary.count', { n: items.length }) }}</p>
+```
+
+> 처음부터 `t()` 로 감싸는 습관을 들이면, 나중에 번역이 필요해질 때 파일만 추가하면 된다.
+> 문자열이 코드에 박혀 있으면 전체를 다시 훑어야 한다.
+
+**② 접근성 — 대형 앱에서 자동화한다**
+
+```bash
+npm install -D vitest-axe   # 컴포넌트 테스트에서 접근성 위반 검사
+npm install -D @axe-core/playwright   # E2E 에서 페이지 전체 검사
+```
+
+**③ 다크 모드 아키텍처**
+
+```css
+/* shared/ui/theme.css — 역할(role) 토큰만 스왑한다 */
+:root { --surface: #fff; --text: #23211e; }
+:root[data-theme="dark"] { --surface: #1a1a1a; --text: #e8e8e8; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --surface: #1a1a1a; --text: #e8e8e8; }
+}
+```
+
+```ts
+// 시스템 설정 따르기 + 사용자 선택 저장
+const theme = useLocalStorage('theme', 'system')
+watchEffect(() => {
+  document.documentElement.dataset.theme =
+    theme.value === 'system' ? '' : theme.value
+})
+```
+
+### 6-10. 테스트 전략
+
+**테스트 피라미드 — 아래가 많고 위가 적다**
+
+```
+      /\        E2E (Playwright)         적게. 핵심 흐름 5~10개. 느리지만 진짜에 가깝다.
+     /  \       느림·비쌈
+    /----\      컴포넌트 (Testing Library + MSW)   중간. 화면 단위 동작.
+   /      \
+  /--------\    단위 (Vitest)            많이. 유틸·컴포저블·스토어. 빠르고 싸다.
+```
+
+```ts
+// 단위 — shared/lib/date.spec.ts
+import { toDateKey } from './date'
+it('KST 새벽 2시는 그 날짜로 나온다', () => {
+  expect(toDateKey(new Date('2026-08-29T17:00:00Z'))).toBe('2026-08-30')
+})
+```
+
+```ts
+// 컴포넌트 — MSW 로 네트워크를 가로챈다 (진짜 서버 없이)
+import { render, screen } from '@testing-library/vue'
+import { http, HttpResponse } from 'msw'
+import { server } from '@/test/msw'
+
+it('빈 목록이면 안내와 버튼을 보여준다', async () => {
+  server.use(http.get('/api/diaries', () => HttpResponse.json({ items: [] })))
+  render(DiaryListPage)
+  expect(await screen.findByText('아직 기록이 없습니다.')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '첫 기록 남기기' })).toBeInTheDocument()
+})
+```
+
+```ts
+// E2E — 실제 브라우저, 실제(또는 테스트) 서버
+test('로그인하고 다이어리를 쓴다', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByLabel('이메일').fill('a@b.com')
+  await page.getByLabel('비밀번호').fill('test1234')
+  await page.getByRole('button', { name: '로그인' }).click()
+  await expect(page).toHaveURL('/')
+  await page.getByRole('link', { name: '새 기록' }).click()
+  await page.getByLabel('제목').fill('오늘의 기록')
+  await page.getByRole('button', { name: '저장' }).click()
+  await expect(page.getByText('오늘의 기록')).toBeVisible()
+})
+```
+
+**무엇을 테스트하나?**
+
+| 우선순위 | 대상 | 이유 |
+| --- | --- | --- |
+| 1 | 유틸·컴포저블 (날짜, 검증, 권한 판단) | 깨지면 사방이 조용히 틀어진다. 가장 싸다 |
+| 2 | 스토어 액션 | 낙관적 동기화 같은 로직 |
+| 3 | 핵심 화면 4~5개 (로그인, 목록, 작성, 상세) | 회귀 방지 |
+| 4 | E2E 로 "가입→작성→조회" 한 줄기 | 배포 전 최종 확인 |
+
+**하지 말 것:** 스타일·마크업 세부를 스냅샷으로 잔뜩 찍기. 리팩터링할 때마다 다 깨져서 아무도 안 본다.
+
+### 백지 재현 과제 (2회독)
+
+1. 이 프로젝트를 FSD 구조(`shared`/`entities`/`features`/`pages`)로 재배치하고, ESLint 로 의존성 방향을 강제한다
+2. `Diary`, `Comment`, `User` 를 zod 스키마로 정의하고 API 응답을 파싱하며 검증한다
+3. 다이어리 목록·상세·좋아요를 Vue Query 로 옮기고, 좋아요에 낙관적 업데이트를 넣는다
+4. `useDiarySearch` 컴포저블로 검색 로직(디바운스 + 라우터 쿼리 동기화 + 조회)을 한 파일에 모은다
+5. Vitest 단위 테스트 10개 + MSW 를 쓴 컴포넌트 테스트 3개 + Playwright E2E 1개를 작성한다
+
+### 확장 과제 (3회독)
+
+1. `shared/ui` 를 별도 워크스페이스 패키지로 분리하고 Storybook 을 붙인다
+2. Sentry 를 연동하고, 일부러 오류를 던져 대시보드에 잡히는지 확인한다
+3. `web-vitals` 로 LCP/INP/CLS 를 수집해 콘솔에 찍고, LCP 를 개선한다 (히어로 이미지 프리로드)
+4. `vue-i18n` 으로 한국어/영어를 전환하고, 날짜·숫자도 로케일에 맞게 포맷한다
+
+### Level 6 체크리스트
+
+- [ ] 기술별 폴더와 기능별 폴더의 차이, 전환 시점을 설명할 수 있다
+- [ ] FSD 의존성 방향 규칙을 말할 수 있고 도구로 강제하는 법을 안다
+- [ ] TS 타입을 "경계에 둔다"는 말의 의미를 안다
+- [ ] zod 로 타입과 런타임 검증을 동시에 얻는 이유를 안다
+- [ ] 서버 상태와 클라이언트 상태를 나누는 기준을 안다
+- [ ] 컴포저블과 컴포넌트의 책임 분리를 할 수 있다
+- [ ] 에러 바운더리와 전역 에러 핸들러의 역할을 구분한다
+- [ ] 테스트 피라미드에 따라 무엇을 얼마나 테스트할지 판단할 수 있다
+
+---
+
+## Level 7 — 팀·릴리스·운영 (프로덕션)
+
+### 목표
+
+혼자 만든 것을 **여러 명이 함께 고치고, 안전하게 배포하고, 문제를 빨리 찾는** 체계로 만든다.
+
+### 7-1. Git 협업
+
+**브랜치 전략 — 소규모 팀은 Trunk-Based 가 낫다**
+
+```
+main  ──●────●────●────●────●──   항상 배포 가능한 상태
+         \       \       \
+          feat/like  feat/i18n  fix/login   짧게 살고 (1~3일) 바로 머지
+```
+
+- `main` 에 직접 push 금지 (브랜치 보호 규칙)
+- 브랜치는 작게, 짧게. 오래 살수록 충돌이 커진다
+- 머지 후 브랜치 삭제
+
+**커밋 컨벤션 — Conventional Commits**
+
+```
+feat: 다이어리 좋아요 낙관적 업데이트 추가
+fix: KST 새벽에 날짜가 하루 밀리는 문제 수정
+refactor: 검증 로직을 useDiaryForm 으로 분리
+chore: @tanstack/vue-query 5.x 로 업데이트
+docs: 백엔드 API 규약 문서 추가
+```
+
+→ 이 형식을 지키면 **CHANGELOG 와 버전 번호를 자동 생성**할 수 있다 (`changesets`, `semantic-release`).
+
+**PR 규칙**
+
+- 하나의 PR = 하나의 목적. 300줄 넘으면 쪼갠다 (리뷰어가 집중력을 잃는다)
+- PR 설명에 "무엇을 왜" 와 "테스트 방법" 을 쓴다
+- `CODEOWNERS` 파일로 특정 폴더 변경 시 담당자 자동 리뷰 지정
+
+```
+# .github/CODEOWNERS
+/src/shared/ui/      @design-system-team
+/src/features/auth/  @security-team
+```
+
+### 7-2. 모노레포
+
+프론트와 백엔드, 공유 타입, 디자인 시스템이 한 저장소에 있으면 관리가 쉽다.
+
+```
+my-project/
+├─ apps/
+│  ├─ web/          (이 Vue 앱)
+│  └─ api/          (백엔드)
+├─ packages/
+│  ├─ ui/           디자인 시스템
+│  ├─ types/        프론트-백엔드 공유 타입 (API 응답 스키마)
+│  └─ config/       공유 eslint / tsconfig
+├─ pnpm-workspace.yaml
+└─ turbo.json
+```
+
+```yaml
+# pnpm-workspace.yaml
+packages: ['apps/*', 'packages/*']
+```
+
+```json
+// turbo.json — 바뀐 것만 빌드/테스트한다 (캐시). Turbo 2.x 는 "pipeline" 대신 "tasks".
+{ "tasks": {
+  "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+  "test":  { "dependsOn": ["build"] },
+  "lint":  {}
+}}
+```
+
+> **가장 큰 이득: 타입 공유.** `packages/types` 에 API 응답 스키마(zod)를 두면
+> 백엔드가 응답 모양을 바꾸는 순간 프론트엔드 빌드가 깨진다. **배포 전에** 안다.
+
+### 7-3. CI/CD
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on: [pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm type-check
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm exec playwright test         # E2E
+```
+
+**파이프라인 원칙**
+
+- 빠른 것부터 (lint → type-check → 단위 테스트 → 빌드 → E2E). 앞에서 떨어지면 뒤는 안 돈다
+- `--frozen-lockfile` 로 lockfile 과 다르면 실패시킨다 (재현성)
+- PR 마다 **프리뷰 배포** (Vercel/Netlify/Cloudflare Pages 자동) → 리뷰어가 실제 화면을 본다
+- `main` 머지 → 자동으로 프로덕션 배포
+
+**배포 게이트 (품질 예산)**
+
+```yaml
+      - run: pnpm exec size-limit          # 번들 크기가 기준 초과면 실패
+      - run: pnpm exec lhci autorun        # Lighthouse 점수 미달이면 실패
+```
+
+### 7-4. 환경 분리와 설정
+
+```
+.env                    로컬 (git 제외)
+.env.development         개발 기본값 (git 포함, 비밀 아님)
+.env.production         프로덕션 빌드 (비밀은 여기 아님 — 호스팅 환경변수)
+```
+
+```ts
+// shared/config/index.ts — 한 곳에서 읽고 검증한다
+import { z } from 'zod'
+const env = z.object({
+  VITE_API_BASE_URL: z.string().url(),
+  VITE_SENTRY_DSN: z.string().optional(),
+  VITE_ENV: z.enum(['development', 'staging', 'production']),
+}).parse(import.meta.env)      // 필수 값이 없으면 빌드가 즉시 실패
+export const config = { apiBaseUrl: env.VITE_API_BASE_URL, ... }
+```
+
+> **`import.meta.env.VITE_*` 를 컴포넌트 여기저기서 직접 읽지 않는다.**
+> 백엔드 교과서 2-6 절과 같은 원칙 — 설정은 한 파일에서 읽고 검증한다.
+
+**Feature Flag — 배포와 공개를 분리한다**
+
+```ts
+if (config.flags.newEditor) { /* 새 에디터 */ } else { /* 기존 */ }
+```
+
+미완성 기능도 `main` 에 머지하고 flag 를 꺼둔다 → 브랜치가 오래 살지 않는다.
+특정 사용자에게만 켜서 점진적으로 배포(canary)할 수도 있다.
+
+### 7-5. 관측 — 배포 후에 무슨 일이 일어나는지 본다
+
+| 도구 종류 | 무엇을 답하나 | 예 |
+| --- | --- | --- |
+| 에러 추적 | "어디서 터졌나?" | Sentry |
+| 제품 분석 | "사용자가 뭘 하나? 어디서 이탈하나?" | PostHog, Amplitude |
+| 세션 리플레이 | "이 사용자가 정확히 뭘 눌렀나?" | PostHog, LogRocket |
+| 실사용자 성능(RUM) | "실제 사용자의 LCP 는?" | web-vitals + 분석 도구 |
+| 가동 모니터링 | "사이트가 살아있나?" | 업타임 체커 |
+
+> **개인 프로젝트와 프로덕션의 가장 큰 차이가 이것이다.**
+> 개인 프로젝트: 내가 브라우저를 열어 확인한다.
+> 프로덕션: 수천 명이 각자 다른 기기·네트워크·브라우저에서 쓴다. **도구 없이는 장님이다.**
+
+### 7-6. 문서화
+
+| 문서 | 목적 | 위치 |
+| --- | --- | --- |
+| `README.md` | 5분 안에 로컬 실행 | 저장소 루트 |
+| `CONTRIBUTING.md` | 브랜치·커밋·PR 규칙 | 저장소 루트 |
+| `docs/adr/` | "왜 이렇게 결정했나" 기록 (ADR) | 예: `0001-use-vue-query.md` |
+| Storybook | 컴포넌트 카탈로그 | 배포된 URL |
+| API 규약 | 프론트-백 인터페이스 | 백엔드 OpenAPI |
+
+**ADR(Architecture Decision Record) 예시**
+
+```markdown
+# 0003. 서버 상태를 Vue Query 로 관리한다
+## 상태: 채택 (2026-09)
+## 맥락
+Pinia 스토어에 서버 데이터와 화면 상태가 섞여, 캐시 무효화 로직이 스토어마다 중복됨.
+## 결정
+서버에서 온 데이터는 Vue Query, 순수 클라이언트 상태만 Pinia.
+## 결과
+- 좋다: 재요청/중복제거/낙관적 업데이트를 라이브러리가 처리
+- 비용: 팀이 새 라이브러리를 학습해야 함, 번들 +13KB
+```
+
+> ADR 은 **미래의 팀원(6개월 뒤의 나 포함)이 "왜 이렇게 짰지?" 라고 물을 때** 답이 된다.
+> 코드는 "무엇을" 말하지만 "왜" 는 말하지 않는다.
+
+### 7-7. 접근성·보안·성능을 CI 로 강제
+
+```yaml
+      - run: pnpm exec vitest run --coverage   # 커버리지 하한선
+      - run: pnpm audit --audit-level=high     # 취약한 의존성
+      - run: pnpm exec playwright test a11y.spec.ts   # axe 검사
+```
+
+**프론트엔드 보안 기본**
+
+- 사용자 입력을 `v-html` 에 넣지 않는다. 꼭 필요하면 `DOMPurify` 로 정화
+- 토큰은 XSS 에 노출되는 `localStorage` 대신 `HttpOnly` 쿠키 고려 (백엔드 협의)
+- 외부 스크립트는 최소화, CSP 헤더 설정 (백엔드/CDN)
+- 의존성은 `dependabot` / `renovate` 로 자동 업데이트 PR
+
+### 백지 재현 과제 (2회독)
+
+1. 저장소에 브랜치 보호, `CODEOWNERS`, PR 템플릿, Conventional Commits 린트(`commitlint`)를 설정한다
+2. GitHub Actions 로 lint → type-check → test → build → E2E 파이프라인을 만든다
+3. PR마다 프리뷰가 배포되도록 Cloudflare Pages(또는 Vercel)를 연결한다
+4. `size-limit` 으로 번들 예산을 걸고, 일부러 큰 라이브러리를 추가해 CI 가 막는지 확인한다
+5. ADR 3개를 쓴다 (라우터 선택, 상태관리 선택, CSS 전략)
+
+### 확장 과제 (3회독)
+
+1. 이 프로젝트를 pnpm 워크스페이스 모노레포로 만들고 `packages/types` 로 API 타입을 프론트-백이 공유하게 한다
+2. Feature Flag 시스템을 만들어 "새 캘린더 UI" 를 flag 뒤에 둔다
+3. PostHog(또는 유사 도구)를 붙여 "작성 버튼 클릭 → 저장 완료" 전환율을 추적한다
+4. Lighthouse CI 를 붙이고 성능 점수 90 미만이면 배포를 막는다
+
+### Level 7 체크리스트
+
+- [ ] Trunk-Based 브랜치 전략과 짧은 브랜치의 이유를 안다
+- [ ] Conventional Commits 가 자동화(CHANGELOG, 버전)로 이어지는 것을 안다
+- [ ] CI 파이프라인의 단계 순서를 왜 그렇게 두는지 설명할 수 있다
+- [ ] 모노레포에서 타입 공유의 이점을 안다
+- [ ] "배포"와 "기능 공개"를 Feature Flag 로 분리하는 이유를 안다
+- [ ] 프로덕션에서 관측 도구가 필수인 이유를 설명할 수 있다
+- [ ] ADR 을 쓸 수 있고, 왜 코드 주석으로 부족한지 안다
+
+---
+
+## 최종 관문 II — 대형 프로젝트 시뮬레이션
+
+Level 6~7 을 마친 뒤 도전한다. 혼자서도 "팀 프로젝트처럼" 만든다.
+
+```
+[구조]
+- pnpm 모노레포: apps/web, apps/api, packages/ui, packages/types
+- FSD 구조, ESLint 로 의존성 방향 강제
+- TypeScript strict 모드, API 경계 zod 검증
+
+[상태]
+- 서버 상태: Vue Query, 클라이언트 상태: Pinia, URL 상태: 라우터
+- 좋아요·댓글에 낙관적 업데이트
+
+[품질]
+- 단위 테스트 커버리지 60% 이상 (유틸·컴포저블·스토어)
+- 컴포넌트 테스트 (MSW), E2E 5개 (Playwright)
+- Storybook 에 shared/ui 전체
+
+[릴리스]
+- GitHub Actions: lint → type-check → test → build → E2E
+- PR 프리뷰 배포, main 머지 시 프로덕션 배포
+- 번들 예산(size-limit) + Lighthouse CI 게이트
+- Conventional Commits + 자동 CHANGELOG
+
+[운영]
+- Sentry 에러 추적
+- web-vitals 수집
+- i18n (한/영), 다크 모드
+- ADR 5개 이상
+```
+
+**완성 기준**
+
+- [ ] 새 개발자가 `README` 만 보고 10분 안에 로컬을 띄운다
+- [ ] `features/` 의 한 기능을 통째로 지워도 다른 기능이 빌드된다
+- [ ] 백엔드가 API 필드를 바꾸면 프론트 `type-check` 가 실패한다
+- [ ] 잘못된 방향의 import 를 하면 ESLint 가 막는다
+- [ ] 큰 라이브러리를 추가하면 CI 가 번들 예산 초과로 막는다
+- [ ] 프로덕션에서 오류가 나면 Sentry 에 사용자 행동과 함께 잡힌다
+- [ ] 미완성 기능이 flag 뒤에서 `main` 에 머지되어 있다
+
+---
+
 ## 부록 A — 자주 쓰는 코드 조각
 
 ```js
@@ -1650,6 +2580,14 @@ Level 4  axios / 인터셉터 / 인증 / 업로드            ← 서버와 대�
 Level 5  성능 / 접근성 / 오류 처리                   ← 품질을 올린다
    ↓
 최종 관문  백지에서 전체 만들기 → 조건 바꿔 다시 만들기
+   ↓
+═══ 이 프로젝트 수준 달성. 아래는 대형 프로젝트로 ═══
+   ↓
+Level 6  FSD 구조 / TS·zod / 서버상태 분리 / 테스트 전략   ← 바꾸기 쉬운 코드
+   ↓
+Level 7  Git 협업 / 모노레포 / CI·CD / 관측 / ADR          ← 팀과 프로덕션
+   ↓
+최종 관문 II  대형 프로젝트 시뮬레이션 (혼자서 팀처럼)
 ```
 
 백엔드는 [Study_backend.md](Study_backend.md) 를 함께 본다.
