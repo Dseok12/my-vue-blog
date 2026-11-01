@@ -27,6 +27,13 @@ export const config = {
   isProduction,
   port: toNumber(process.env.PORT, 4000),
 
+  /**
+   * Nginx 같은 프록시 뒤에서 실행할 때 거치는 프록시 수 (보통 1).
+   * 설정하면 X-Forwarded-For 로 실제 접속 IP 를 읽는다. (로그인 시도 제한이 IP 기준이라 필요)
+   * 프록시 없이 직접 접속받을 때는 비워 둔다. (비워야 IP 를 위조할 수 없다)
+   */
+  trustProxy: toNumber(process.env.TRUST_PROXY, 0),
+
   /** CORS 허용 주소 목록 (쉼표 구분) */
   corsOrigins: (process.env.CORS_ORIGIN || 'http://localhost:3000')
     .split(',')

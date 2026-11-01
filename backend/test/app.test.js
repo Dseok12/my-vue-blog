@@ -9,6 +9,7 @@ import test from 'node:test'
 
 process.env.NODE_ENV = 'test'
 process.env.AUTH_RATE_MAX = '3'
+process.env.TRUST_PROXY = '1'
 
 const { createApp } = await import('../src/app.js')
 const { pool } = await import('../src/db/pool.js')
@@ -79,4 +80,21 @@ test('로그인 시도 제한 - 정해진 횟수를 넘으면 429', async () => 
   const blocked = await login()
   assert.equal(blocked.status, 429)
   assert.ok(blocked.headers.get('retry-after'))
+})
+
+test('TRUST_PROXY=1 이면 프록시가 알려 준 실제 IP 별로 따로 센다', async () => {
+  // Nginx 가 X-Forwarded-For 에 실제 접속 IP 를 적어 준다고 가정한다.
+  const loginFrom = (ip) =>
+    fetch(baseUrl + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip },
+      body: '{}',
+    })
+
+  for (let i = 0; i < 3; i += 1) {
+    assert.equal((await loginFrom('203.0.113.1')).status, 400)
+  }
+  assert.equal((await loginFrom('203.0.113.1')).status, 429)
+  // 다른 사용자는 앞 사람 때문에 막히지 않는다.
+  assert.equal((await loginFrom('203.0.113.2')).status, 400)
 })

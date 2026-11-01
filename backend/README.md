@@ -27,6 +27,7 @@ cp .env.example .env   # 윈도우: copy .env.example .env
 | `CORS_ORIGIN` | 허용할 프론트엔드 주소 (기본 `http://localhost:3000`) |
 | `PUBLIC_BASE_URL` | 이미지 주소를 절대 경로로 주고 싶을 때만 사용 |
 | `AUTH_RATE_WINDOW_MINUTES` / `AUTH_RATE_MAX` | 로그인·회원가입 시도 제한 (기본 15분에 20번) |
+| `TRUST_PROXY` | Nginx 뒤에서 실행하면 `1`. 없으면 모든 사용자가 같은 IP 로 보여 시도 제한이 함께 걸린다 |
 | `ADMIN_EMAILS`, `REPORT_EMAIL`, `SMTP_*` | 관리자 / 신고 알림 메일 (비워 두면 기본값, 메일은 콘솔 출력) |
 
 ---

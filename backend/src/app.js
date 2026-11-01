@@ -18,6 +18,7 @@ export function createApp() {
   const app = express()
 
   app.disable('x-powered-by')
+  if (config.trustProxy) app.set('trust proxy', config.trustProxy)
   app.use(securityHeaders)
   app.use(cors({ origin: config.corsOrigins, credentials: true }))
   app.use(express.json({ limit: '2mb' }))
