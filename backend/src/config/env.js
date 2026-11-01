@@ -33,6 +33,12 @@ const config = {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   },
 
+  /** 로그인 / 회원가입 요청 제한 - 같은 IP 기준 */
+  authRateLimit: {
+    windowMs: toNumber(process.env.AUTH_RATE_WINDOW_MINUTES, 15) * 60 * 1000,
+    max: toNumber(process.env.AUTH_RATE_MAX, 20),
+  },
+
   upload: {
     /** 업로드 파일이 저장되는 실제 폴더 */
     directory: path.join(__dirname, '..', '..', 'uploads'),

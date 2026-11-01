@@ -64,8 +64,8 @@ VITE_USE_MOCK=false
 | POST | `/auth/login` | 로그인 | `{ user, token }` |
 | GET | `/auth/me` | 내 정보 | `{ user }` |
 | POST | `/auth/logout` | 로그아웃 | `{}` |
-| GET | `/diaries` | 내 다이어리 목록 (`dateKey`, `category`, `visibility`, `keyword`) | `{ items }` |
-| GET | `/diaries/feed` | 공개 글 목록 (`category`, `keyword`) | `{ items }` |
+| GET | `/diaries` | 내 다이어리 목록 (`dateKey`, `category`, `visibility`, `keyword`, `cursor`, `limit`) | `{ items, nextCursor, total }` |
+| GET | `/diaries/feed` | 공개 글 목록 (`category`, `keyword`, `cursor`, `limit`) | `{ items, nextCursor, total }` |
 | GET | `/diaries/monthly-counts` | 월별 작성 개수 (`year`, `month`, `scope`) | `{ counts }` |
 | GET | `/diaries/:id` | 다이어리 상세 | `{ diary }` |
 | POST | `/diaries` | 작성 | `{ diary }` |
@@ -76,6 +76,17 @@ VITE_USE_MOCK=false
 | POST | `/diaries/:id/comments` | 댓글 / 대댓글 작성 | `{ comment }` |
 | DELETE | `/diaries/:id/comments/:cid` | 댓글 삭제 | `{}` |
 | POST | `/uploads/image` | 이미지 업로드 (`multipart/form-data`, 필드명 `image`) | `{ url, name, size }` |
+
+### 목록 페이지네이션 ("더 보기")
+
+- `limit` : 한 번에 가져올 개수 (기본 10, 최대 30)
+- `cursor` : 앞 응답의 `nextCursor` 를 그대로 넘기면 다음 페이지를 준다. 없으면 첫 페이지.
+- `nextCursor` 가 `null` 이면 마지막 페이지, `total` 은 필터에 맞는 전체 개수.
+
+### 요청 제한
+
+`/auth/signup`, `/auth/login` 은 같은 IP 에서 15분에 20번까지만 받는다. 넘으면 `429`
+(`.env` 의 `AUTH_RATE_WINDOW_MINUTES`, `AUTH_RATE_MAX` 로 조절).
 
 인증은 `Authorization: Bearer <token>` 헤더로 합니다.
 `/auth/signup`, `/auth/login`, 업로드된 이미지 파일(`/api/uploads/files/...`)
@@ -103,8 +114,16 @@ backend/
    ├─ services/          권한 검사와 업무 규칙
    ├─ models/            SQL 쿼리
    ├─ serializers/       DB 행 -> 프론트엔드 응답 형태
-   ├─ middlewares/       인증, 업로드, 오류 처리
-   └─ utils/             날짜, 검증, 토큰, 비밀번호 등
+   ├─ middlewares/       인증, 업로드, 요청 제한, 보안 헤더, 오류 처리
+   └─ utils/             날짜, 검증, 페이지네이션, 토큰, 비밀번호 등
+test/                    자동 테스트 (npm test) - DB 없이 실행된다
+```
+
+## 6-1. 코드 검사와 테스트
+
+```bash
+npm run lint   # ESLint - 실수하기 쉬운 코드 찾기
+npm test       # node --test - test/*.test.js 실행
 ```
 
 ## 7. 알아 두면 좋은 점
@@ -115,3 +134,4 @@ backend/
   (프론트엔드가 주소창의 id 와 `===` 로 비교하기 때문입니다.)
 - 비밀번호는 bcrypt 해시로만 저장합니다.
 - 이미지 업로드는 10MB, `jpg / jpeg / png / gif / webp` 만 허용합니다.
+- 글을 수정하며 뺀 이미지, 삭제한 글의 이미지는 더 이상 쓰는 곳이 없으면 파일도 지웁니다.

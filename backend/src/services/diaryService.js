@@ -4,8 +4,29 @@ const diaryModel = require('../models/diaryModel')
 const likeModel = require('../models/likeModel')
 const { toDiary, toDiaryList } = require('../serializers/diarySerializer')
 const { toMonthPrefix } = require('../utils/date')
+const { toPage } = require('../utils/pagination')
+const { filenameFromUrl, removeUploadedFile } = require('../utils/uploadFiles')
 
 const NOT_FOUND = '다이어리를 찾을 수 없습니다.'
+
+/** 목록 응답 - { items, nextCursor, total } */
+function toListResponse(rows, total, limit) {
+  const { rows: pageRows, nextCursor } = toPage(rows, limit)
+  return { items: toDiaryList(pageRows), nextCursor, total }
+}
+
+/**
+ * 더 이상 어떤 글에서도 쓰지 않는 이미지 파일을 지운다.
+ * 파일 정리는 부가 작업이므로 실패해도 요청 자체는 성공으로 둔다.
+ */
+async function cleanUpImages(urls) {
+  try {
+    const unused = await diaryModel.findUnusedImageUrls(urls)
+    await Promise.all(unused.map((url) => removeUploadedFile(filenameFromUrl(url))))
+  } catch (error) {
+    console.error('[업로드] 사용하지 않는 이미지를 정리하지 못했습니다.', error.message)
+  }
+}
 
 /** 다이어리를 찾고, 없으면 404 를 던진다. */
 async function findOrFail(id) {
@@ -33,14 +54,21 @@ function assertPublic(diary, message) {
   if (diary.visibility !== 'public') throw ApiError.badRequest(message)
 }
 
-async function listMine(viewerId, filters) {
-  const rows = await diaryModel.findMine(viewerId, filters)
-  return { items: toDiaryList(rows) }
+/** page = { cursor, limit } (utils/pagination.js) */
+async function listMine(viewerId, filters, page) {
+  const [rows, total] = await Promise.all([
+    diaryModel.findMine(viewerId, filters, page),
+    diaryModel.countMine(viewerId, filters),
+  ])
+  return toListResponse(rows, total, page.limit)
 }
 
-async function listFeed(viewerId, filters) {
-  const rows = await diaryModel.findFeed(viewerId, filters)
-  return { items: toDiaryList(rows) }
+async function listFeed(viewerId, filters, page) {
+  const [rows, total] = await Promise.all([
+    diaryModel.findFeed(viewerId, filters, page),
+    diaryModel.countFeed(filters),
+  ])
+  return toListResponse(rows, total, page.limit)
 }
 
 /** scope 가 'mine' 이면 내 글만, 그 외에는 공개 글 전체를 센다. */
@@ -72,7 +100,12 @@ async function update(id, viewerId, payload) {
   const owned = await findOrFail(id)
   assertOwner(owned, viewerId, '수정 권한이 없습니다.')
 
+  const before = await diaryModel.findImageUrls(id)
   await diaryModel.update(id, payload)
+  // 수정하면서 뺀 이미지는 파일도 지운다.
+  const kept = new Set(payload.images.map((image) => image.url))
+  await cleanUpImages(before.filter((url) => !kept.has(url)))
+
   const row = await diaryModel.findById(id, viewerId)
   return { diary: toDiary(row) }
 }
@@ -81,7 +114,9 @@ async function remove(id, viewerId) {
   const owned = await findOrFail(id)
   assertOwner(owned, viewerId, '삭제 권한이 없습니다.')
 
+  const imageUrls = await diaryModel.findImageUrls(id)
   await diaryModel.remove(id)
+  await cleanUpImages(imageUrls)
   return {}
 }
 

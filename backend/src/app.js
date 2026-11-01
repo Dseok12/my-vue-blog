@@ -7,10 +7,12 @@ const config = require('./config/env')
 const routes = require('./routes')
 const notFound = require('./middlewares/notFound')
 const errorHandler = require('./middlewares/errorHandler')
+const securityHeaders = require('./middlewares/securityHeaders')
 
 const app = express()
 
 app.disable('x-powered-by')
+app.use(securityHeaders)
 
 // 프론트엔드 개발 서버에서 직접 호출하는 경우를 위해 CORS 를 열어 둔다.
 app.use(

@@ -130,7 +130,9 @@ function parseCommentPayload(body = {}) {
   if (!content) throw ApiError.badRequest('댓글 내용을 입력해 주세요.')
   if (content.length > 1000) throw ApiError.badRequest('댓글은 1000자 이하여야 합니다.')
 
-  const parentId = body.parentId === undefined || body.parentId === null ? null : asText(body.parentId)
+  // 숫자(7)로 와도 문자열('7')로 와도 같은 값으로 취급한다.
+  const parentId =
+    body.parentId === undefined || body.parentId === null ? null : String(body.parentId).trim()
   if (parentId !== null && !/^\d+$/.test(parentId)) {
     throw ApiError.badRequest('원본 댓글 정보가 올바르지 않습니다.')
   }

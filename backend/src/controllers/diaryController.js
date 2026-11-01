@@ -11,8 +11,15 @@ const {
   parseKeyword,
   parseYearMonth,
 } = require('../utils/validators')
+const { parseCursor, parseLimit } = require('../utils/pagination')
 
 const diaryIdOf = (req) => parseId(req.params.diaryId, '다이어리를 찾을 수 없습니다.')
+
+/** ?cursor=...&limit=... -> { cursor, limit } */
+const pageOf = (req) => ({
+  cursor: parseCursor(req.query.cursor),
+  limit: parseLimit(req.query.limit),
+})
 
 const listMine = asyncHandler(async (req, res) => {
   const filters = {
@@ -21,7 +28,7 @@ const listMine = asyncHandler(async (req, res) => {
     visibility: parseOptionalEnum(req.query.visibility, VISIBILITIES, '공개 여부'),
     keyword: parseKeyword(req.query.keyword),
   }
-  res.json(await diaryService.listMine(req.user.id, filters))
+  res.json(await diaryService.listMine(req.user.id, filters, pageOf(req)))
 })
 
 const listFeed = asyncHandler(async (req, res) => {
@@ -29,7 +36,7 @@ const listFeed = asyncHandler(async (req, res) => {
     category: parseOptionalEnum(req.query.category, CATEGORIES, '종류'),
     keyword: parseKeyword(req.query.keyword),
   }
-  res.json(await diaryService.listFeed(req.user.id, filters))
+  res.json(await diaryService.listFeed(req.user.id, filters, pageOf(req)))
 })
 
 const monthlyCounts = asyncHandler(async (req, res) => {

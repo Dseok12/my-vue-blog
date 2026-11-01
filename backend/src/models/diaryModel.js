@@ -17,7 +17,8 @@ const SELECT_DIARY = `
   INNER JOIN users u ON u.id = d.user_id
 `
 
-const ORDER_BY_LATEST = ' ORDER BY d.date_key DESC, d.created_at DESC, d.id DESC'
+/** 최신 날짜 먼저, 같은 날짜면 나중에 쓴 글 먼저. (커서 페이지네이션도 이 순서를 기준으로 한다) */
+const ORDER_BY_LATEST = ' ORDER BY d.date_key DESC, d.id DESC'
 
 /** LIKE 검색어에 쓰이는 특수문자(역슬래시, %, _)를 그대로 찾도록 이스케이프한다. */
 const LIKE_ESCAPE = String.fromCharCode(92) // 역슬래시
@@ -54,10 +55,16 @@ async function attachImages(rows) {
   return rows
 }
 
-/** 내 다이어리 목록 */
-async function findMine(viewerId, { dateKey, category, visibility, keyword } = {}) {
+function addKeywordCondition(conditions, params, keyword) {
+  if (!keyword) return
+  conditions.push('(d.title LIKE ? OR d.content LIKE ?)')
+  params.push(toLikePattern(keyword), toLikePattern(keyword))
+}
+
+/** 내 다이어리 목록의 조건 */
+function mineConditions(viewerId, { dateKey, category, visibility, keyword } = {}) {
   const conditions = ['d.user_id = ?']
-  const params = [viewerId, viewerId]
+  const params = [viewerId]
 
   if (dateKey) {
     conditions.push('d.date_key = ?')
@@ -71,37 +78,70 @@ async function findMine(viewerId, { dateKey, category, visibility, keyword } = {
     conditions.push('d.visibility = ?')
     params.push(visibility)
   }
-  if (keyword) {
-    conditions.push('(d.title LIKE ? OR d.content LIKE ?)')
-    params.push(toLikePattern(keyword), toLikePattern(keyword))
-  }
-
-  const rows = await db.query(
-    SELECT_DIARY + ' WHERE ' + conditions.join(' AND ') + ORDER_BY_LATEST,
-    params,
-  )
-  return attachImages(rows)
+  addKeywordCondition(conditions, params, keyword)
+  return { conditions, params }
 }
 
-/** 공개 피드 목록 */
-async function findFeed(viewerId, { category, keyword } = {}) {
+/** 공개 피드 목록의 조건 */
+function feedConditions({ category, keyword } = {}) {
   const conditions = ["d.visibility = 'public'"]
-  const params = [viewerId]
+  const params = []
 
   if (category) {
     conditions.push('d.category = ?')
     params.push(category)
   }
-  if (keyword) {
-    conditions.push('(d.title LIKE ? OR d.content LIKE ?)')
-    params.push(toLikePattern(keyword), toLikePattern(keyword))
+  addKeywordCondition(conditions, params, keyword)
+  return { conditions, params }
+}
+
+/**
+ * 조건에 맞는 글을 한 페이지만큼 읽는다.
+ * 다음 페이지가 있는지 알기 위해 limit 보다 하나 더 읽는다. (utils/pagination.js 의 toPage)
+ */
+async function findPage({ conditions, params }, viewerId, { cursor, limit }) {
+  const where = [...conditions]
+  // SELECT_DIARY 의 첫 번째 ? 는 보는 사람의 id 이다.
+  const values = [viewerId, ...params]
+
+  // 정렬 기준(date_key DESC, id DESC)에서 커서보다 "뒤"에 있는 글만 고른다.
+  if (cursor) {
+    where.push('(d.date_key < ? OR (d.date_key = ? AND d.id < ?))')
+    values.push(cursor.dateKey, cursor.dateKey, cursor.id)
   }
 
   const rows = await db.query(
-    SELECT_DIARY + ' WHERE ' + conditions.join(' AND ') + ORDER_BY_LATEST,
-    params,
+    SELECT_DIARY + ' WHERE ' + where.join(' AND ') + ORDER_BY_LATEST + ' LIMIT ?',
+    [...values, limit + 1],
   )
   return attachImages(rows)
+}
+
+/** 조건에 맞는 글의 전체 개수 (커서와 상관없이) */
+async function countWhere({ conditions, params }) {
+  const row = await db.queryOne(
+    'SELECT COUNT(*) AS total FROM diaries d WHERE ' + conditions.join(' AND '),
+    params,
+  )
+  return Number(row.total)
+}
+
+/** 내 다이어리 목록 (한 페이지) */
+function findMine(viewerId, filters, page) {
+  return findPage(mineConditions(viewerId, filters), viewerId, page)
+}
+
+function countMine(viewerId, filters) {
+  return countWhere(mineConditions(viewerId, filters))
+}
+
+/** 공개 피드 목록 (한 페이지) */
+function findFeed(viewerId, filters, page) {
+  return findPage(feedConditions(filters), viewerId, page)
+}
+
+function countFeed(filters) {
+  return countWhere(feedConditions(filters))
 }
 
 /** 다이어리 한 건 */
@@ -205,6 +245,20 @@ async function remove(id) {
   await db.execute('DELETE FROM diaries WHERE id = ?', [id])
 }
 
+/** 글에 첨부된 이미지 주소 목록 */
+async function findImageUrls(diaryId) {
+  const rows = await db.query('SELECT url FROM diary_images WHERE diary_id = ?', [diaryId])
+  return rows.map((row) => row.url)
+}
+
+/** 주어진 주소 중 어느 글에서도 쓰지 않는 것만 돌려준다. (파일 정리용) */
+async function findUnusedImageUrls(urls) {
+  if (!urls.length) return []
+  const rows = await db.query('SELECT DISTINCT url FROM diary_images WHERE url IN (?)', [urls])
+  const used = new Set(rows.map((row) => row.url))
+  return urls.filter((url) => !used.has(url))
+}
+
 /** 권한 확인용 - 작성자와 공개 여부만 읽는다. */
 function findOwnership(id) {
   return db.queryOne('SELECT id, user_id, visibility FROM diaries WHERE id = ?', [id])
@@ -212,9 +266,13 @@ function findOwnership(id) {
 
 module.exports = {
   findMine,
+  countMine,
   findFeed,
+  countFeed,
   findById,
   findOwnership,
+  findImageUrls,
+  findUnusedImageUrls,
   countByMonth,
   create,
   update,

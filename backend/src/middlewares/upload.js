@@ -4,7 +4,6 @@
  */
 const crypto = require('crypto')
 const fs = require('fs')
-const path = require('path')
 
 const multer = require('multer')
 
@@ -50,13 +49,6 @@ const uploader = multer({
   limits: { fileSize: config.upload.maxBytes, files: 1 },
 })
 
-/** 업로드된 파일을 지운다. (저장 이후 오류가 났을 때 사용) */
-function removeUploadedFile(filename) {
-  if (!filename) return
-  fs.promises.unlink(path.join(config.upload.directory, filename)).catch(() => {})
-}
-
 module.exports = {
   uploadImage: uploader.single('image'),
-  removeUploadedFile,
 }
