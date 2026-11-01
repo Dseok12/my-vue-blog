@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref } from 'vue'
+import { reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import AuthCard from '@/components/common/AuthCard.vue'
@@ -19,7 +19,6 @@ const uiStore = useUiStore()
 
 const form = reactive({ email: '', password: '' })
 const errors = reactive({ email: '', password: '' })
-const touched = ref(false)
 
 function validate() {
   errors.email = validateEmail(form.email)
@@ -28,7 +27,6 @@ function validate() {
 }
 
 async function onSubmit() {
-  touched.value = true
   if (!validate()) return
 
   const success = await authStore.login({ ...form })

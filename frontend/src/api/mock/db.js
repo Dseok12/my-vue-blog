@@ -15,7 +15,9 @@ function shiftDateKey(days) {
 }
 
 function shiftIso(days, hours = 9) {
-  return new Date(shiftDateKey(days) + 'T' + String(hours).padStart(2, '0') + ':00:00+09:00').toISOString()
+  return new Date(
+    shiftDateKey(days) + 'T' + String(hours).padStart(2, '0') + ':00:00+09:00',
+  ).toISOString()
 }
 
 /** 첫 실행 시 넣어 두는 예시 데이터 */
@@ -78,7 +80,8 @@ function createSeed() {
         id: 'd3',
         authorId: 'u1',
         title: '조금 지친 하루',
-        content: '할 일이 많았고 마음이 바빴다. 그래도 저녁에 마신 따뜻한 차 한 잔이 위로가 되었다.',
+        content:
+          '할 일이 많았고 마음이 바빴다. 그래도 저녁에 마신 따뜻한 차 한 잔이 위로가 되었다.',
         category: 'emotion',
         mood: 'tired',
         dateKey: shiftDateKey(-3),

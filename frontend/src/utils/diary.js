@@ -28,6 +28,8 @@ export function isPublic(diary) {
 
 /** 목록에서 보여줄 요약문 */
 export function summarize(content, length = 120) {
-  const text = String(content || '').replace(/\s+/g, ' ').trim()
+  const text = String(content || '')
+    .replace(/\s+/g, ' ')
+    .trim()
   return text.length > length ? text.slice(0, length) + '…' : text
 }

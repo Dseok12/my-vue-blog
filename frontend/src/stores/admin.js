@@ -14,9 +14,7 @@ export const useAdminStore = defineStore('admin', () => {
     loading.value = true
     error.value = ''
     try {
-      const { items } = await adminApi.listReports(
-        status.value ? { status: status.value } : {},
-      )
+      const { items } = await adminApi.listReports(status.value ? { status: status.value } : {})
       reports.value = items
     } catch (err) {
       error.value = err.message

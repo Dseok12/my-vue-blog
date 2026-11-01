@@ -48,8 +48,9 @@
   --shadow-lg: 0 12px 32px rgba(35, 33, 30, 0.14);
 
   /* 타이포 */
-  --font-sans: 'Pretendard', system-ui, -apple-system, 'Apple SD Gothic Neo',
-    'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  --font-sans:
+    'Pretendard', system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR',
+    sans-serif;
   --font-size-xs: 12px;
   --font-size-sm: 13px;
   --font-size-md: 15px;

@@ -1,9 +1,5 @@
 /** 이미지 파일 검증 및 변환 유틸 */
-import {
-  IMAGE_ALLOWED_EXTENSIONS,
-  IMAGE_ALLOWED_MIME_TYPES,
-  IMAGE_MAX_BYTES,
-} from '@/config'
+import { IMAGE_ALLOWED_EXTENSIONS, IMAGE_ALLOWED_MIME_TYPES, IMAGE_MAX_BYTES } from '@/config'
 
 /** 파일 크기를 사람이 읽기 쉬운 문자열로 바꾼다. */
 export function formatBytes(bytes) {
