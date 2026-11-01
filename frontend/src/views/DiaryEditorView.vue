@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import LoadingBlock from '@/components/common/LoadingBlock.vue'
 import DiaryForm from '@/components/diary/DiaryForm.vue'
+import { useLeaveGuard } from '@/composables/useLeaveGuard'
 import { useAuthStore } from '@/stores/auth'
 import { useDiaryStore } from '@/stores/diary'
 import { useUiStore } from '@/stores/ui'
@@ -21,6 +22,11 @@ const source = ref(null)
 const loading = ref(false)
 const submitting = ref(false)
 const message = ref('')
+
+// 작성 중인 내용이 있으면 화면을 떠나기 전에 한 번 더 묻는다. (저장에 성공한 뒤에는 묻지 않는다)
+const dirty = ref(false)
+const saved = ref(false)
+useLeaveGuard(() => dirty.value && !saved.value)
 
 watch(
   diaryId,
@@ -65,8 +71,9 @@ async function onSubmit(payload) {
       ? await diaryStore.update(diaryId.value, payload)
       : await diaryStore.create(payload)
 
+    saved.value = true
     uiStore.notify.success(isEdit.value ? '수정했습니다.' : '기록을 저장했습니다.')
-    diaryStore.fetchMonthlyCounts(diary.dateKey)
+    diaryStore.refreshMonthlyCounts()
     router.push({ name: 'diary-detail', params: { id: diary.id } })
   } catch (error) {
     message.value = error.message
@@ -89,7 +96,11 @@ function onCancel() {
     <div class="editor__head">
       <h1 class="editor__title">{{ isEdit ? '다이어리 수정' : '새 다이어리' }}</h1>
       <p class="editor__subtitle">
-        {{ isEdit ? '내용을 고친 뒤 수정 완료를 눌러 주세요.' : '하루에 몇 개든 자유롭게 기록할 수 있습니다.' }}
+        {{
+          isEdit
+            ? '내용을 고친 뒤 수정 완료를 눌러 주세요.'
+            : '하루에 몇 개든 자유롭게 기록할 수 있습니다.'
+        }}
       </p>
     </div>
 
@@ -103,6 +114,7 @@ function onCancel() {
       :submitting="submitting"
       @submit="onSubmit"
       @cancel="onCancel"
+      @dirty-change="dirty = $event"
     />
   </div>
 </template>

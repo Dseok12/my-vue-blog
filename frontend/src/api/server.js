@@ -25,8 +25,7 @@ export const diaries = {
 export const comments = {
   list: (diaryId) => client.get('/diaries/' + diaryId + '/comments'),
   create: (diaryId, payload) => client.post('/diaries/' + diaryId + '/comments', payload),
-  remove: (diaryId, commentId) =>
-    client.delete('/diaries/' + diaryId + '/comments/' + commentId),
+  remove: (diaryId, commentId) => client.delete('/diaries/' + diaryId + '/comments/' + commentId),
 }
 
 export const uploads = {

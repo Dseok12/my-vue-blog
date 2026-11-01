@@ -29,4 +29,9 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
   },
+  // 테스트 (Vitest) - `npm test`. 브라우저 대신 jsdom 으로 DOM 을 흉내 낸다.
+  test: {
+    environment: 'jsdom',
+    include: ['src/**/*.test.js'],
+  },
 })

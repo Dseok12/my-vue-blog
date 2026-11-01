@@ -42,9 +42,7 @@ export const useCommentStore = defineStore('comment', () => {
 
   async function remove(diaryId, commentId) {
     await commentApi.remove(diaryId, commentId)
-    items.value = items.value.filter(
-      (item) => item.id !== commentId && item.parentId !== commentId,
-    )
+    items.value = items.value.filter((item) => item.id !== commentId && item.parentId !== commentId)
   }
 
   function clear() {

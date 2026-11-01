@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
 import BaseButton from '@/components/common/BaseButton.vue'
 import BaseInput from '@/components/common/BaseInput.vue'
@@ -16,7 +16,8 @@ const props = defineProps({
   submitting: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['submit', 'cancel'])
+/** dirty-change : 처음 상태에서 바뀌었는지(true/false) 알려 준다. (작성 중 이탈 경고용) */
+const emit = defineEmits(['submit', 'cancel', 'dirty-change'])
 
 /** 새 글의 기본값 - 날짜는 한국 시간 기준 오늘 */
 function createForm(source) {
@@ -35,10 +36,19 @@ const form = reactive(createForm(props.diary))
 const errors = reactive({ title: '', content: '' })
 const touched = ref(false)
 
+// 처음 상태를 문자열로 저장해 두고, 지금 상태와 비교해 바뀌었는지 판단한다.
+const initialSnapshot = ref(JSON.stringify(form))
+const dirty = computed(() => JSON.stringify(form) !== initialSnapshot.value)
+
 watch(
   () => props.diary,
-  (value) => Object.assign(form, createForm(value)),
+  (value) => {
+    Object.assign(form, createForm(value))
+    initialSnapshot.value = JSON.stringify(form)
+  },
 )
+
+watch(dirty, (value) => emit('dirty-change', value))
 
 function validate() {
   errors.title = validateTitle(form.title)
@@ -126,12 +136,7 @@ watch(
           class="form__radio"
           :class="{ 'form__radio--on': form.visibility === option.value }"
         >
-          <input
-            v-model="form.visibility"
-            type="radio"
-            name="visibility"
-            :value="option.value"
-          />
+          <input v-model="form.visibility" type="radio" name="visibility" :value="option.value" />
           <span class="form__radio-text">
             <span class="form__radio-title">{{ option.label }}</span>
             <span class="form__radio-desc">{{ option.description }}</span>

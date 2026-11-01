@@ -18,9 +18,19 @@ const isPublic = computed(() => props.diary.visibility === 'public')
 </script>
 
 <template>
-  <router-link class="card" :to="{ name: 'diary-detail', params: { id: diary.id } }">
+  <article class="card">
+    <!--
+      링크(<a>) 안에 버튼을 넣으면 잘못된 HTML 이 된다.
+      그래서 제목만 링크로 두고, CSS 로 링크가 카드 전체를 덮게 해서 어디를 눌러도 상세로 간다.
+      좋아요 버튼은 그 위에 올려 따로 눌린다. (DiaryCard.css 의 .card__link::after)
+      주의: 이 주석을 <article> 밖(맨 위)에 두면 루트가 두 개가 되어 속성 전달이 깨진다.
+    -->
     <DiaryMeta :diary="diary" :show-author="showAuthor" />
-    <h3 class="card__title">{{ diary.title }}</h3>
+    <h3 class="card__title">
+      <router-link class="card__link" :to="{ name: 'diary-detail', params: { id: diary.id } }">
+        {{ diary.title }}
+      </router-link>
+    </h3>
     <p class="card__excerpt u-clamp-3">{{ excerpt }}</p>
 
     <div v-if="diary.images.length" class="card__thumbs">
@@ -36,9 +46,9 @@ const isPublic = computed(() => props.diary.visibility === 'public')
 
     <div class="card__foot">
       <span class="card__stat">💬 {{ diary.commentCount }}</span>
-      <LikeButton v-if="isPublic" :diary="diary" />
+      <LikeButton v-if="isPublic" class="card__like" :diary="diary" />
       <span class="card__spacer"></span>
       <span>{{ fromNow(diary.createdAt) }}</span>
     </div>
-  </router-link>
+  </article>
 </template>

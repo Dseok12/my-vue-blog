@@ -13,12 +13,7 @@ export const USE_MOCK = String(env.VITE_USE_MOCK ?? 'true') === 'true'
 /** 이미지 업로드 제한 */
 export const IMAGE_MAX_BYTES = 10 * 1024 * 1024 // 10MB
 export const IMAGE_ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp']
-export const IMAGE_ALLOWED_MIME_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-]
+export const IMAGE_ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 export const IMAGE_MAX_COUNT = 5
 
 /** 다이어리 종류 - 일기 / 독서기록 / 감정기록 */

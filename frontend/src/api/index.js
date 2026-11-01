@@ -18,8 +18,9 @@
  * POST   /auth/login                   -> { user, token }
  * GET    /auth/me                      -> { user }
  * POST   /auth/logout                  -> {}
- * GET    /diaries?dateKey&category&visibility&keyword   -> { items }
- * GET    /diaries/feed?keyword&category                 -> { items }
+ * GET    /diaries?dateKey&category&visibility&keyword&cursor&limit -> { items, nextCursor, total }
+ * GET    /diaries/feed?keyword&category&cursor&limit               -> { items, nextCursor, total }
+ *        (cursor 가 없으면 첫 페이지, 응답의 nextCursor 가 null 이면 마지막 페이지)
  * GET    /diaries/monthly-counts?year&month&scope       -> { counts }
  * GET    /diaries/:id                  -> { diary }
  * POST   /diaries                      -> { diary }
@@ -38,6 +39,7 @@
  * - GET  /diaries/:id                  : 비공개 글은 작성자 본인만, 아니면 403
  * - POST /diaries/:id/like, /comments  : 공개(public) 글에만 허용, 아니면 400
  * - DELETE /diaries/:id/comments/:cid  : 댓글 작성자 본인만, 아니면 403
+ * - 토큰이 없거나 만료되면 401 -> 화면은 로그인 화면으로 보낸다 (main.js)
  */
 import { USE_MOCK } from '@/config'
 

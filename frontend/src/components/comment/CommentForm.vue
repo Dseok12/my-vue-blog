@@ -4,7 +4,7 @@ import { ref } from 'vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 import '@/css/components/CommentForm.css'
 
-const props = defineProps({
+defineProps({
   placeholder: { type: String, default: '댓글을 남겨 보세요.' },
   submitText: { type: String, default: '등록' },
   submitting: { type: Boolean, default: false },
@@ -30,11 +30,7 @@ defineExpose({ reset })
 </script>
 
 <template>
-  <form
-    class="comment-form"
-    :class="{ 'comment-form--reply': reply }"
-    @submit.prevent="onSubmit"
-  >
+  <form class="comment-form" :class="{ 'comment-form--reply': reply }" @submit.prevent="onSubmit">
     <textarea
       v-model="content"
       class="comment-form__input"
@@ -43,12 +39,7 @@ defineExpose({ reset })
     ></textarea>
     <div class="comment-form__actions">
       <BaseButton v-if="reply" size="sm" variant="ghost" @click="emit('cancel')">취소</BaseButton>
-      <BaseButton
-        size="sm"
-        type="submit"
-        :loading="submitting"
-        :disabled="!content.trim()"
-      >
+      <BaseButton size="sm" type="submit" :loading="submitting" :disabled="!content.trim()">
         {{ submitText }}
       </BaseButton>
     </div>
