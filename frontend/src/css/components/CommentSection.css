@@ -28,6 +28,14 @@
   gap: var(--space-4);
 }
 
+.comments__error {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background-color: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+}
+
 .comments__empty {
   padding: var(--space-6);
   text-align: center;

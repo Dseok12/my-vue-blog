@@ -33,7 +33,7 @@ async function onToggle() {
     type="button"
     :disabled="pending"
     :aria-pressed="diary.likedByMe"
-    @click.stop.prevent="onToggle"
+    @click="onToggle"
   >
     <span aria-hidden="true">{{ diary.likedByMe ? '♥' : '♡' }}</span>
     <span class="like__count">{{ diary.likeCount }}</span>

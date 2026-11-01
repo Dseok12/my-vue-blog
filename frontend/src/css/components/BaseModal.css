@@ -18,6 +18,11 @@
   box-shadow: var(--shadow-lg);
 }
 
+/* 포커스는 패널로 옮기지만 테두리는 그리지 않는다. (안의 버튼에는 그대로 보인다) */
+.modal__panel:focus {
+  outline: none;
+}
+
 .modal__title {
   font-size: var(--font-size-lg);
   font-weight: 700;

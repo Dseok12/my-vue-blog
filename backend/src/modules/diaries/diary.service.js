@@ -15,6 +15,8 @@ import { ApiError } from '../../utils/ApiError.js'
 import { monthRange, toIso } from '../../utils/date.js'
 import { displayNickname } from '../../utils/nickname.js'
 import { newId } from '../../utils/id.js'
+import { cursorCondition, parseCursor, parseLimit, toPage } from '../../utils/pagination.js'
+import { filenameFromUrl, removeUploadedFile } from '../../utils/uploadFiles.js'
 import {
   CATEGORIES,
   VISIBILITIES,
@@ -39,7 +41,8 @@ const SELECT_DIARY = `
     JOIN users u ON u.id = d.author_id
 `
 
-const ORDER_BY_LATEST = ' ORDER BY d.date_key DESC, d.created_at DESC'
+/** 최신 날짜 먼저, 같은 날짜면 나중에 쓴 글 먼저. (id 는 순서를 고정하기 위한 마지막 기준) */
+const ORDER_BY_LATEST = ' ORDER BY d.date_key DESC, d.created_at DESC, d.id DESC'
 
 /** 제목과 내용에서 검색어를 찾는 조건 (대소문자 구분 없음) */
 const KEYWORD_CONDITION = "LOCATE(?, CONCAT(d.title, ' ', d.content)) > 0"
@@ -133,11 +136,73 @@ function applyListFilters(params, conditions, values) {
   }
 }
 
+/**
+ * 조건에 맞는 글을 한 페이지만큼 읽고 { items, nextCursor, total } 로 돌려준다.
+ * - conditions / values : WHERE 조건 (values[0] 은 SELECT_DIARY 의 '보는 회원 id')
+ * - params.cursor / params.limit : 페이지 위치와 크기 (utils/pagination.js)
+ */
+async function listPage(viewer, conditions, values, params) {
+  const limit = parseLimit(params.limit)
+  const cursor = cursorCondition(parseCursor(params.cursor))
+  const where = cursor.sql ? [...conditions, cursor.sql] : conditions
+
+  // limit 는 parseLimit 이 정수로 보장한다. (prepared statement 의 LIMIT ? 는
+  // MySQL 버전에 따라 오류가 나므로 검증된 숫자를 직접 붙인다)
+  // 다음 페이지가 있는지 알기 위해 하나 더 읽는다.
+  const rows = await query(
+    SELECT_DIARY +
+      ' WHERE ' +
+      where.join(' AND ') +
+      ORDER_BY_LATEST +
+      ' LIMIT ' +
+      (limit + 1),
+    [...values, ...cursor.values],
+  )
+
+  // 전체 개수는 커서와 상관없이 같은 조건으로 센다. (values[0] 인 '보는 회원 id' 는 빼고)
+  const countRow = await queryOne(
+    'SELECT COUNT(*) AS total FROM diaries d WHERE ' + conditions.join(' AND '),
+    values.slice(1),
+  )
+
+  const page = toPage(rows, limit)
+  return {
+    items: await serializeMany(page.rows, viewer),
+    nextCursor: page.nextCursor,
+    total: Number(countRow.total),
+  }
+}
+
+/**
+ * 더 이상 어떤 글에서도 쓰지 않는 이미지 파일을 지운다.
+ * 파일 정리는 부가 작업이므로 실패해도 요청 자체는 성공으로 둔다.
+ */
+async function cleanUpImages(urls) {
+  if (urls.length === 0) return
+  try {
+    const placeholders = urls.map(() => '?').join(', ')
+    const rows = await query(
+      'SELECT DISTINCT url FROM diary_images WHERE url IN (' + placeholders + ')',
+      urls,
+    )
+    const used = new Set(rows.map((row) => row.url))
+    const unused = urls.filter((url) => !used.has(url))
+    await Promise.all(unused.map((url) => removeUploadedFile(filenameFromUrl(url))))
+  } catch (error) {
+    console.error('[upload] 사용하지 않는 이미지를 정리하지 못했습니다.', error.message)
+  }
+}
+
+async function findImageUrls(diaryId) {
+  const rows = await query('SELECT url FROM diary_images WHERE diary_id = ?', [diaryId])
+  return rows.map((row) => row.url)
+}
+
 /* -------------------------------------------------------------------------- */
 /* 조회                                                                       */
 /* -------------------------------------------------------------------------- */
 
-/** 내가 쓴 글 목록 */
+/** 내가 쓴 글 목록 (한 페이지) */
 export async function listMine(viewer, params = {}) {
   const conditions = ['d.author_id = ?']
   const values = [viewer.id, viewer.id]
@@ -160,11 +225,7 @@ export async function listMine(viewer, params = {}) {
 
   applyListFilters(params, conditions, values)
 
-  const rows = await query(
-    SELECT_DIARY + ' WHERE ' + conditions.join(' AND ') + ORDER_BY_LATEST,
-    values,
-  )
-  return { items: await serializeMany(rows, viewer) }
+  return listPage(viewer, conditions, values, params)
 }
 
 /**
@@ -191,18 +252,14 @@ export async function listByAuthor(viewer, authorId, params = {}) {
   return { items: await serializeMany(rows, viewer) }
 }
 
-/** 다른 회원에게 공개된 글 목록 */
+/** 다른 회원에게 공개된 글 목록 (한 페이지) */
 export async function listFeed(viewer, params = {}) {
   const conditions = ["d.visibility = 'public'", 'd.is_hidden = 0']
   const values = [viewer.id]
 
   applyListFilters(params, conditions, values)
 
-  const rows = await query(
-    SELECT_DIARY + ' WHERE ' + conditions.join(' AND ') + ORDER_BY_LATEST,
-    values,
-  )
-  return { items: await serializeMany(rows, viewer) }
+  return listPage(viewer, conditions, values, params)
 }
 
 /**
@@ -297,6 +354,7 @@ export async function update(viewer, id, body) {
   if (current.author_id !== viewer.id) throw ApiError.forbidden('수정 권한이 없습니다.')
 
   const payload = requireDiaryPayload(body)
+  const before = await findImageUrls(id)
 
   await withTransaction(async (connection) => {
     await connection.execute(
@@ -316,6 +374,10 @@ export async function update(viewer, id, body) {
     await replaceImages(connection, id, payload.images)
   })
 
+  // 수정하면서 뺀 이미지는 파일도 지운다.
+  const kept = new Set(payload.images.map((image) => image.url))
+  await cleanUpImages(before.filter((url) => !kept.has(url)))
+
   return get(viewer, id)
 }
 
@@ -325,8 +387,11 @@ export async function remove(viewer, id) {
   // 다른 회원이 쓴 글은 삭제할 수 없다.
   if (current.author_id !== viewer.id) throw ApiError.forbidden('삭제 권한이 없습니다.')
 
+  const imageUrls = await findImageUrls(id)
+
   // 이미지 / 댓글 / 좋아요 / 신고는 외래키 설정에 따라 함께 지워진다.
   await execute('DELETE FROM diaries WHERE id = ?', [id])
+  await cleanUpImages(imageUrls)
   return {}
 }
 

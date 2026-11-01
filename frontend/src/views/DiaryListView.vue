@@ -1,15 +1,17 @@
 <script setup>
-import { computed, onMounted, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 
 import BaseButton from '@/components/common/BaseButton.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import LoadingBlock from '@/components/common/LoadingBlock.vue'
+import LoadMoreButton from '@/components/common/LoadMoreButton.vue'
 import DiaryCard from '@/components/diary/DiaryCard.vue'
 import DiaryFilterBar from '@/components/diary/DiaryFilterBar.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDiaryStore } from '@/stores/diary'
+import { useUiStore } from '@/stores/ui'
 import { formatDate } from '@/utils/date'
 import '@/css/views/DiaryListView.css'
 
@@ -17,13 +19,14 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const diaryStore = useDiaryStore()
-const { items, filters, loading, error } = storeToRefs(diaryStore)
+const uiStore = useUiStore()
+const { items, total, hasMore, loadingMore, filters, loading, error } = storeToRefs(diaryStore)
 
 const selectedDate = computed(() => String(route.query.date || ''))
 
 const subtitle = computed(() => {
-  if (selectedDate.value) return formatDate(selectedDate.value) + ' 의 기록'
-  return authStore.nickname + ' 님이 남긴 기록 ' + items.value.length + '개'
+  if (selectedDate.value) return formatDate(selectedDate.value) + ' 의 기록 ' + total.value + '개'
+  return authStore.nickname + ' 님이 남긴 기록 ' + total.value + '개'
 })
 
 function clearDate() {
@@ -45,9 +48,13 @@ function updateFilter(patch) {
   diaryStore.fetchMine()
 }
 
-onMounted(() => {
-  diaryStore.fetchMonthlyCounts(selectedDate.value || undefined)
-})
+async function loadMore() {
+  try {
+    await diaryStore.loadMoreMine()
+  } catch (err) {
+    uiStore.notify.error(err.message)
+  }
+}
 </script>
 
 <template>
@@ -90,10 +97,20 @@ onMounted(() => {
       </template>
     </EmptyState>
 
-    <ul v-else class="list__items">
-      <li v-for="diary in items" :key="diary.id">
-        <DiaryCard :diary="diary" />
-      </li>
-    </ul>
+    <template v-else>
+      <ul class="list__items">
+        <li v-for="diary in items" :key="diary.id">
+          <DiaryCard :diary="diary" />
+        </li>
+      </ul>
+
+      <LoadMoreButton
+        v-if="hasMore"
+        :shown="items.length"
+        :total="total"
+        :loading="loadingMore"
+        @load="loadMore"
+      />
+    </template>
   </div>
 </template>

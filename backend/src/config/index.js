@@ -74,6 +74,12 @@ export const config = {
     from: process.env.MAIL_FROM || process.env.SMTP_USER || 'no-reply@diary.local',
   },
 
+  /** 로그인 / 회원가입 요청 제한 - 같은 IP 기준 */
+  authRateLimit: {
+    windowMs: toNumber(process.env.AUTH_RATE_WINDOW_MINUTES, 15) * 60 * 1000,
+    max: toNumber(process.env.AUTH_RATE_MAX, 20),
+  },
+
   upload: {
     /** 업로드 파일이 저장되는 폴더 (backend/uploads) */
     directory: process.env.UPLOAD_DIR || 'uploads',

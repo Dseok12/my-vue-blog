@@ -4,17 +4,29 @@ import { storeToRefs } from 'pinia'
 
 import EmptyState from '@/components/common/EmptyState.vue'
 import LoadingBlock from '@/components/common/LoadingBlock.vue'
+import LoadMoreButton from '@/components/common/LoadMoreButton.vue'
 import DiaryCard from '@/components/diary/DiaryCard.vue'
 import DiaryFilterBar from '@/components/diary/DiaryFilterBar.vue'
 import { useDiaryStore } from '@/stores/diary'
+import { useUiStore } from '@/stores/ui'
 import '@/css/views/FeedView.css'
 
 const diaryStore = useDiaryStore()
-const { feedItems, filters, loading, error } = storeToRefs(diaryStore)
+const uiStore = useUiStore()
+const { feedItems, feedTotal, feedHasMore, feedLoadingMore, filters, loading, error } =
+  storeToRefs(diaryStore)
 
 function updateFilter(patch) {
   diaryStore.applyFilter(patch)
   diaryStore.fetchFeed()
+}
+
+async function loadMore() {
+  try {
+    await diaryStore.loadMoreFeed()
+  } catch (err) {
+    uiStore.notify.error(err.message)
+  }
 }
 
 onMounted(() => {
@@ -48,10 +60,20 @@ onMounted(() => {
       description="내 기록을 공개로 남기면 이곳에서 함께 볼 수 있습니다."
     />
 
-    <ul v-else class="feed__items">
-      <li v-for="diary in feedItems" :key="diary.id">
-        <DiaryCard :diary="diary" show-author />
-      </li>
-    </ul>
+    <template v-else>
+      <ul class="feed__items">
+        <li v-for="diary in feedItems" :key="diary.id">
+          <DiaryCard :diary="diary" show-author />
+        </li>
+      </ul>
+
+      <LoadMoreButton
+        v-if="feedHasMore"
+        :shown="feedItems.length"
+        :total="feedTotal"
+        :loading="feedLoadingMore"
+        @load="loadMore"
+      />
+    </template>
   </div>
 </template>

@@ -10,6 +10,7 @@ import morgan from 'morgan'
 
 import { config } from './config/index.js'
 import { errorHandler, notFoundHandler } from './middlewares/error.js'
+import { securityHeaders } from './middlewares/securityHeaders.js'
 import { uploadDirectory } from './middlewares/upload.js'
 import { apiRouter } from './routes/index.js'
 
@@ -17,6 +18,7 @@ export function createApp() {
   const app = express()
 
   app.disable('x-powered-by')
+  app.use(securityHeaders)
   app.use(cors({ origin: config.corsOrigins, credentials: true }))
   app.use(express.json({ limit: '2mb' }))
   app.use(express.urlencoded({ extended: true }))
