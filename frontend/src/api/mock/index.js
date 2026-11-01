@@ -143,6 +143,22 @@ function sortByDateDesc(a, b) {
   return b.dateKey.localeCompare(a.dateKey)
 }
 
+/**
+ * 정렬된 목록을 한 페이지로 자른다. 응답 형태는 실제 백엔드와 같다.
+ * mock 에서는 "이번 페이지 마지막 글의 id" 를 커서로 쓴다.
+ * (백엔드는 '날짜_작성시각_id' 를 쓰지만, 화면은 커서를 그대로 돌려줄 뿐이라 상관없다.)
+ */
+function paginate(list, { cursor, limit = 10 } = {}) {
+  const start = cursor ? list.findIndex((item) => item.id === cursor) + 1 : 0
+  const items = list.slice(start, start + limit)
+  const hasMore = start + limit < list.length
+  return {
+    items,
+    nextCursor: hasMore ? items[items.length - 1].id : null,
+    total: list.length,
+  }
+}
+
 /** 가림 처리된 글을 볼 수 있는 사람인지 */
 function canSeeHidden(diary, viewer) {
   return diary.authorId === viewer.id || isAdminUser(viewer)
@@ -299,36 +315,36 @@ export const users = {
 /* diaries                                                                    */
 /* -------------------------------------------------------------------------- */
 export const diaries = {
-  async listMine({ dateKey, category, visibility, keyword } = {}) {
+  async listMine({ dateKey, category, visibility, keyword, cursor, limit } = {}) {
     await delay()
     const db = readDb()
     const user = requireUser(db)
 
-    const items = db.diaries
+    const list = db.diaries
       .filter((diary) => diary.authorId === user.id)
       .filter((diary) => (dateKey ? diary.dateKey === dateKey : true))
       .filter((diary) => (category ? diary.category === category : true))
       .filter((diary) => (visibility ? diary.visibility === visibility : true))
       .filter((diary) => matchKeyword(diary, keyword))
       .sort(sortByDateDesc)
-      .map((diary) => serializeDiary(db, diary, user))
 
-    return { items }
+    const page = paginate(list, { cursor, limit })
+    return { ...page, items: page.items.map((diary) => serializeDiary(db, diary, user)) }
   },
 
-  async listFeed({ keyword, category } = {}) {
+  async listFeed({ keyword, category, cursor, limit } = {}) {
     await delay()
     const db = readDb()
     const user = requireUser(db)
 
-    const items = db.diaries
+    const list = db.diaries
       .filter((diary) => diary.visibility === 'public' && !diary.isHidden)
       .filter((diary) => (category ? diary.category === category : true))
       .filter((diary) => matchKeyword(diary, keyword))
       .sort(sortByDateDesc)
-      .map((diary) => serializeDiary(db, diary, user))
 
-    return { items }
+    const page = paginate(list, { cursor, limit })
+    return { ...page, items: page.items.map((diary) => serializeDiary(db, diary, user)) }
   },
 
   async monthlyCounts({ year, month, scope = 'mine' } = {}) {
@@ -446,9 +462,7 @@ export const diaries = {
       throw new ApiError('가림 처리된 글에는 좋아요를 누를 수 없습니다.', 400)
     }
 
-    const index = db.likes.findIndex(
-      (like) => like.diaryId === id && like.userId === user.id,
-    )
+    const index = db.likes.findIndex((like) => like.diaryId === id && like.userId === user.id)
     if (index >= 0) {
       db.likes.splice(index, 1)
     } else {
@@ -526,9 +540,7 @@ export const comments = {
     if (comment.authorId !== user.id) throw new ApiError('삭제 권한이 없습니다.', 403)
 
     // 대댓글도 함께 삭제한다.
-    db.comments = db.comments.filter(
-      (item) => item.id !== commentId && item.parentId !== commentId,
-    )
+    db.comments = db.comments.filter((item) => item.id !== commentId && item.parentId !== commentId)
     writeDb(db)
     return {}
   },

@@ -17,7 +17,7 @@ const props = defineProps({
 const commentStore = useCommentStore()
 const diaryStore = useDiaryStore()
 const uiStore = useUiStore()
-const { tree, count, loading } = storeToRefs(commentStore)
+const { tree, count, loading, error } = storeToRefs(commentStore)
 
 const rootForm = ref(null)
 const replyTarget = ref(null)
@@ -82,6 +82,8 @@ async function removeComment(comment) {
       <CommentForm ref="rootForm" :submitting="submitting" @submit="addComment($event)" />
 
       <LoadingBlock v-if="loading" message="댓글을 불러오는 중입니다." />
+
+      <p v-else-if="error" class="comments__error">{{ error }}</p>
 
       <p v-else-if="!tree.length" class="comments__empty">첫 댓글을 남겨 보세요.</p>
 

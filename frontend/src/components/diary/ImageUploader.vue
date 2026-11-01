@@ -89,7 +89,9 @@ function onDrop(event) {
       @dragleave.prevent="dragging = false"
       @drop.prevent="onDrop"
     >
-      <span>{{ uploading ? '업로드 중입니다…' : '이미지를 끌어다 놓거나 클릭해 선택하세요.' }}</span>
+      <span>{{
+        uploading ? '업로드 중입니다…' : '이미지를 끌어다 놓거나 클릭해 선택하세요.'
+      }}</span>
       <span class="uploader__rule">{{ ruleText }}</span>
     </div>
 

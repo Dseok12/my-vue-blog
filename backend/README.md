@@ -26,6 +26,9 @@ cp .env.example .env   # 윈도우: copy .env.example .env
 | `JWT_SECRET` | 로그인 토큰 서명 키. **운영에서는 반드시 바꿉니다.** |
 | `CORS_ORIGIN` | 허용할 프론트엔드 주소 (기본 `http://localhost:3000`) |
 | `PUBLIC_BASE_URL` | 이미지 주소를 절대 경로로 주고 싶을 때만 사용 |
+| `AUTH_RATE_WINDOW_MINUTES` / `AUTH_RATE_MAX` | 로그인·회원가입 시도 제한 (기본 15분에 20번) |
+| `TRUST_PROXY` | Nginx 뒤에서 실행하면 `1`. 없으면 모든 사용자가 같은 IP 로 보여 시도 제한이 함께 걸린다 |
+| `ADMIN_EMAILS`, `REPORT_EMAIL`, `SMTP_*` | 관리자 / 신고 알림 메일 (비워 두면 기본값, 메일은 콘솔 출력) |
 
 ---
 
@@ -46,6 +49,8 @@ npm run dev          # 개발 실행 (파일 저장 시 자동 재시작)
 | `npm run db:seed` | 예시 데이터를 넣습니다. 회원이 있으면 건너뜁니다. |
 | `npm run db:seed -- --force` | 예시 계정(데모 / 하루)을 지우고 다시 넣습니다. |
 | `npm run db:reset` | `--fresh` 후 예시 데이터까지 한 번에 |
+| `npm run lint` | ESLint - 실수하기 쉬운 코드 찾기 |
+| `npm test` | `node --test` - `test/*.test.js` 실행 (DB 없이 동작) |
 
 ### 예시 계정
 
@@ -87,6 +92,8 @@ backend/
 │  ├─ middlewares/
 │  │  ├─ auth.js             토큰 확인 (requireAuth)
 │  │  ├─ error.js            오류를 { message } JSON 으로 변환
+│  │  ├─ rateLimit.js        요청 횟수 제한 (로그인 / 회원가입)
+│  │  ├─ securityHeaders.js  기본 보안 헤더
 │  │  └─ upload.js           이미지 업로드 (multer)
 │  ├─ modules/               기능별 폴더 (routes → controller → service)
 │  │  ├─ auth/               회원가입 / 로그인
@@ -94,7 +101,8 @@ backend/
 │  │  ├─ comments/           댓글 / 대댓글
 │  │  └─ uploads/            이미지 업로드
 │  ├─ routes/index.js        /api 아래 라우터 모음
-│  └─ utils/                 공통 도구 (검증 / 날짜 / 오류 / id)
+│  └─ utils/                 공통 도구 (검증 / 날짜 / 오류 / id / 페이지네이션 / 업로드 파일)
+├─ test/                     자동 테스트 (npm test)
 └─ uploads/                  업로드된 이미지 저장 폴더
 ```
 
@@ -123,8 +131,8 @@ Express 5 는 `async` 함수에서 발생한 오류를 자동으로 에러 핸�
 | POST | `/auth/login` | 로그인 → `{ user, token }` |
 | GET | `/auth/me` | 내 정보 → `{ user }` |
 | POST | `/auth/logout` | 로그아웃 (토큰 방식이라 응답만) |
-| GET | `/diaries` | 내 글 목록. `dateKey` `category` `visibility` `keyword` 로 거를 수 있음 |
-| GET | `/diaries/feed` | 공개 글 목록. `category` `keyword` |
+| GET | `/diaries` | 내 글 목록. `dateKey` `category` `visibility` `keyword` 로 거를 수 있음, `cursor` `limit` → `{ items, nextCursor, total }` |
+| GET | `/diaries/feed` | 공개 글 목록. `category` `keyword`, `cursor` `limit` → `{ items, nextCursor, total }` |
 | GET | `/diaries/monthly-counts` | 달력용 날짜별 개수. `year` `month` `scope` |
 | GET | `/diaries/:id` | 글 하나 |
 | POST | `/diaries` | 글 작성 |
@@ -141,6 +149,20 @@ Express 5 는 `async` 함수에서 발생한 오류를 자동으로 에러 핸�
 ```json
 { "message": "수정 권한이 없습니다." }
 ```
+
+### 목록 페이지네이션 ("더 보기")
+
+- `limit` : 한 번에 가져올 개수 (기본 10, 최대 30)
+- `cursor` : 앞 응답의 `nextCursor` 를 그대로 넘기면 다음 페이지를 준다. 없으면 첫 페이지.
+- `nextCursor` 가 `null` 이면 마지막 페이지, `total` 은 필터에 맞는 전체 개수.
+- 정렬은 `date_key DESC, created_at DESC, id DESC`. 커서는 마지막 글의 이 세 값이다.
+  (OFFSET 방식과 달리 그 사이 새 글이 생겨도 중복·누락이 없다)
+- 마이페이지의 회원 글 목록(`/users/:id/diaries`)은 아직 한 번에 모두 준다.
+
+### 요청 제한과 보안 헤더
+
+- `/auth/signup`, `/auth/login` 은 같은 IP 에서 15분에 20번까지만 받는다. 넘으면 `429` 와 `Retry-After` 헤더.
+- 모든 응답에 `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` 등 기본 보안 헤더를 붙인다.
 
 ---
 
@@ -193,5 +215,5 @@ Express 5 는 `async` 함수에서 발생한 오류를 자동으로 에러 핸�
 - 파일은 `backend/uploads` 에 저장되고 `/uploads/<파일명>` 주소로 제공됩니다.
 - 이 폴더는 git 에 올라가지 않습니다.
 
-> 참고: 글을 지우거나 이미지를 뺐을 때 서버에 있는 파일 자체는 지우지 않습니다.
-> 쓰지 않는 파일을 정리하는 기능이 필요하면 별도로 추가해야 합니다.
+- 글을 수정하며 뺀 이미지, 삭제한 글의 이미지는 **더 이상 어떤 글에서도 쓰지 않으면** 파일도 지웁니다.
+  (파일 정리에 실패해도 요청 자체는 성공으로 처리하고 로그만 남깁니다)

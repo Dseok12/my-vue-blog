@@ -82,27 +82,17 @@ onMounted(() => adminStore.fetchReports())
 
     <LoadingBlock v-if="loading" />
 
-    <EmptyState
-      v-else-if="!reports.length"
-      icon="🛡️"
-      title="표시할 신고가 없습니다."
-    />
+    <EmptyState v-else-if="!reports.length" icon="🛡️" title="표시할 신고가 없습니다." />
 
     <ul v-else class="admin__list">
       <li v-for="report in reports" :key="report.id" class="admin__item">
         <div class="admin__item-main">
           <div class="admin__item-head">
             <span class="admin__reason">{{ report.reasonLabel }}</span>
-            <span
-              class="admin__status"
-              :class="`admin__status--${report.status}`"
-            >
+            <span class="admin__status" :class="`admin__status--${report.status}`">
               {{ statusLabels[report.status] || report.status }}
             </span>
-            <span
-              v-if="report.diaryHidden"
-              class="admin__status admin__status--hidden"
-            >
+            <span v-if="report.diaryHidden" class="admin__status admin__status--hidden">
               가림 중
             </span>
           </div>

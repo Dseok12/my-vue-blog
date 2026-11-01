@@ -27,6 +27,13 @@ export const config = {
   isProduction,
   port: toNumber(process.env.PORT, 4000),
 
+  /**
+   * Nginx 같은 프록시 뒤에서 실행할 때 거치는 프록시 수 (보통 1).
+   * 설정하면 X-Forwarded-For 로 실제 접속 IP 를 읽는다. (로그인 시도 제한이 IP 기준이라 필요)
+   * 프록시 없이 직접 접속받을 때는 비워 둔다. (비워야 IP 를 위조할 수 없다)
+   */
+  trustProxy: toNumber(process.env.TRUST_PROXY, 0),
+
   /** CORS 허용 주소 목록 (쉼표 구분) */
   corsOrigins: (process.env.CORS_ORIGIN || 'http://localhost:3000')
     .split(',')
@@ -72,6 +79,12 @@ export const config = {
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || '',
     from: process.env.MAIL_FROM || process.env.SMTP_USER || 'no-reply@diary.local',
+  },
+
+  /** 로그인 / 회원가입 요청 제한 - 같은 IP 기준 */
+  authRateLimit: {
+    windowMs: toNumber(process.env.AUTH_RATE_WINDOW_MINUTES, 15) * 60 * 1000,
+    max: toNumber(process.env.AUTH_RATE_MAX, 20),
   },
 
   upload: {

@@ -1,4 +1,5 @@
 .card {
+  position: relative;
   display: block;
   padding: var(--space-5);
   background-color: var(--color-surface);
@@ -21,6 +22,35 @@
   font-size: var(--font-size-lg);
   font-weight: 700;
   color: var(--color-text);
+}
+
+.card__link {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* 제목 링크의 클릭 영역을 카드 전체로 넓힌다. */
+.card__link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+/* 키보드로 제목에 포커스가 오면 카드 전체에 테두리를 그린다. */
+.card__link:focus-visible {
+  outline: none;
+}
+
+.card:has(.card__link:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* 좋아요 버튼은 카드 링크 위에 올려 따로 누를 수 있게 한다. */
+.card__like {
+  position: relative;
+  z-index: 1;
 }
 
 .card__excerpt {

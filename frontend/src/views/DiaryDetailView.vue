@@ -52,6 +52,7 @@ async function onRemove() {
   removing.value = true
   try {
     await diaryStore.remove(String(route.params.id))
+    diaryStore.refreshMonthlyCounts()
     uiStore.notify.success('다이어리를 삭제했습니다.')
     router.push({ name: 'diary-list' })
   } catch (err) {
@@ -123,12 +124,7 @@ async function onReport(payload) {
             </BaseButton>
             <BaseButton size="sm" variant="danger" @click="confirmOpen = true">삭제</BaseButton>
           </template>
-          <BaseButton
-            v-else-if="canReport"
-            size="sm"
-            variant="ghost"
-            @click="reportOpen = true"
-          >
+          <BaseButton v-else-if="canReport" size="sm" variant="ghost" @click="reportOpen = true">
             신고
           </BaseButton>
         </div>

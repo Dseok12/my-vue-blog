@@ -1,0 +1,10 @@
+.load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-6);
+}
+
+.load-more__count {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}

@@ -22,8 +22,9 @@
  * GET    /users/:id                    -> { user, isMe }
  * GET    /users/:id/diaries?category&keyword  -> { items }
  * PATCH  /users/me   { nickname?, currentPassword?, newPassword? }  -> { user }
- * GET    /diaries?dateKey&category&visibility&keyword   -> { items }
- * GET    /diaries/feed?keyword&category                 -> { items }
+ * GET    /diaries?dateKey&category&visibility&keyword&cursor&limit -> { items, nextCursor, total }
+ * GET    /diaries/feed?keyword&category&cursor&limit               -> { items, nextCursor, total }
+ *        (cursor 가 없으면 첫 페이지, 응답의 nextCursor 가 null 이면 마지막 페이지)
  * GET    /diaries/monthly-counts?year&month&scope       -> { counts }
  * GET    /diaries/:id                  -> { diary }
  * POST   /diaries                      -> { diary }
@@ -50,6 +51,8 @@
  * - POST /diaries/:id/reports          : 공개 글, 자기 글 아님, 중복 아님 - 신고 시 자동 가림
  * - 공개 맥락(피드/공개글/댓글)의 닉네임은 첫 글자만 남기고 * 처리한다. (본인·관리자 제외)
  * - /admin/*                           : 관리자만 (403)
+ * - 토큰이 없거나 만료되면 401 -> 화면은 로그인 화면으로 보낸다 (main.js)
+ * - POST /auth/login, /auth/signup     : 같은 IP 에서 너무 많이 시도하면 429
  */
 import { USE_MOCK } from '@/config'
 

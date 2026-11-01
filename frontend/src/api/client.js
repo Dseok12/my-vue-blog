@@ -17,6 +17,21 @@ export const client = axios.create({
   timeout: 15000,
 })
 
+/**
+ * 로그인이 만료되어 401 을 받았을 때 실행할 함수.
+ * api 폴더는 라우터·스토어를 모르게 두고, 실제 처리는 main.js 에서 등록한다.
+ */
+let unauthorizedHandler = null
+
+export function onUnauthorized(handler) {
+  unauthorizedHandler = handler
+}
+
+/** 로그인 / 회원가입 / 내 정보 요청의 401 은 각 화면에서 직접 처리한다. */
+function isAuthRequest(config) {
+  return String(config?.url || '').startsWith('/auth/')
+}
+
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem(STORAGE_KEYS.token)
   if (token) {
@@ -29,6 +44,8 @@ client.interceptors.response.use(
   (response) => response.data,
   (error) => {
     const status = error.response?.status ?? 0
+    if (status === 401 && !isAuthRequest(error.config)) unauthorizedHandler?.()
+
     const message =
       error.response?.data?.message ||
       (status === 0 ? '서버에 연결할 수 없습니다.' : '요청을 처리하지 못했습니다.')

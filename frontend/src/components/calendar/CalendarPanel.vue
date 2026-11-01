@@ -20,9 +20,7 @@ const viewMonth = ref(initial.month)
 // 첫 번째 시작 요일은 일요일이다.
 const weeks = computed(() => buildMonthMatrix(viewYear.value, viewMonth.value))
 const monthLabel = computed(() => viewYear.value + '년 ' + viewMonth.value + '월')
-const monthPrefix = computed(
-  () => viewYear.value + '-' + String(viewMonth.value).padStart(2, '0'),
-)
+const monthPrefix = computed(() => viewYear.value + '-' + String(viewMonth.value).padStart(2, '0'))
 const monthTotal = computed(() =>
   Object.entries(props.counts)
     .filter(([dateKey]) => dateKey.startsWith(monthPrefix.value))

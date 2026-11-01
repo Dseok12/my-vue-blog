@@ -28,6 +28,10 @@ export class ApiError extends Error {
   static conflict(message) {
     return new ApiError(message, 409)
   }
+
+  static tooManyRequests(message = '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.') {
+    return new ApiError(message, 429)
+  }
 }
 
 export default ApiError
