@@ -1,4 +1,6 @@
-# 백엔드 교과서 — Node.js + Express + MySQL 로 API 서버 만들기
+# Stage 6 — Node.js + Express + MySQL 로 API 서버 만들기
+
+> 전체 로드맵: [study/README.md](README.md) · 이전: [05 Vue](05-vue.md) · 다음: [07 Vue 심화](07-vue-advanced.md)
 
 이 문서 하나만 보고 **입문자 수준에서 시작해 이 프로젝트(`backend/`) 수준, 그리고 그 이상까지** 도달하는 것을 목표로 한다.
 읽기만 하는 문서가 아니라 **여러 번 반복해서 만들어 보는 훈련 교재**다.
@@ -32,7 +34,7 @@ Level 5  보안·성능·운영        [ ]1회독  [ ]2회독  [ ]3회독
 
 ### 0-3. 시작 전 필요한 것
 
-- Node.js 18 이상
+- Node.js 22 LTS 이상 (최소 20.19)
 - MySQL 8 (또는 MariaDB) — 설치 후 root 비밀번호를 기억해 둘 것
 - API 테스트 도구 — **하나는 반드시 익힌다**
   - `curl` (터미널)
@@ -132,7 +134,7 @@ mkdir my-api && cd my-api
 npm init -y
 ```
 
-`package.json` 이 만들어진다. 이 프로젝트([backend/package.json](backend/package.json))의 구조:
+`package.json` 이 만들어진다. 이 프로젝트([backend/package.json](../backend/package.json))의 구조:
 
 ```json
 {
@@ -268,7 +270,7 @@ function errorHandler(error, req, res, next) {   // ← 인자 4개
 
 ### 2-2. 앱 구성 — 순서가 전부다
 
-[backend/src/app.js](backend/src/app.js)
+[backend/src/app.js](../backend/src/app.js)
 
 ```js
 const app = express()
@@ -316,7 +318,7 @@ module.exports = app
 // server.js — 앱을 "실행"한다 (DB 확인 + listen + 종료 처리)
 ```
 
-[backend/src/server.js](backend/src/server.js)
+[backend/src/server.js](../backend/src/server.js)
 
 ```js
 async function start() {
@@ -342,7 +344,7 @@ async function start() {
 
 ### 2-3. 라우터 — 주소를 파일로 나눈다
 
-[backend/src/routes/index.js](backend/src/routes/index.js)
+[backend/src/routes/index.js](../backend/src/routes/index.js)
 
 ```js
 const router = express.Router()
@@ -361,7 +363,7 @@ router.use('/uploads', requireAuth, uploadRoutes)
 **미들웨어를 라우터 단위로 건다.** `requireAuth` 를 여기 한 번 걸면
 그 아래 모든 주소가 보호된다. 라우트마다 붙이면 하나 빠뜨렸을 때 구멍이 생긴다.
 
-[backend/src/routes/diaryRoutes.js](backend/src/routes/diaryRoutes.js)
+[backend/src/routes/diaryRoutes.js](../backend/src/routes/diaryRoutes.js)
 
 ```js
 // 고정 주소를 먼저 두어야 '/:diaryId' 에 잡히지 않는다
@@ -409,7 +411,7 @@ router.get('/', async (req, res) => {
 ```
 
 해결: 한 줄짜리 래퍼를 만들어 **모든 핸들러를 감싼다.**
-[backend/src/utils/asyncHandler.js](backend/src/utils/asyncHandler.js)
+[backend/src/utils/asyncHandler.js](../backend/src/utils/asyncHandler.js)
 
 ```js
 function asyncHandler(handler) {
@@ -430,7 +432,7 @@ const listMine = asyncHandler(async (req, res) => {
 ### 2-5. 오류를 한 곳에서 처리한다
 
 **① 사용자에게 보여 줄 오류를 클래스로 정의한다**
-[backend/src/utils/ApiError.js](backend/src/utils/ApiError.js)
+[backend/src/utils/ApiError.js](../backend/src/utils/ApiError.js)
 
 ```js
 class ApiError extends Error {
@@ -456,7 +458,7 @@ throw ApiError.conflict('이미 가입된 이메일입니다.')
 ```
 
 **② 오류 처리기에서 형태를 통일한다**
-[backend/src/middlewares/errorHandler.js](backend/src/middlewares/errorHandler.js)
+[backend/src/middlewares/errorHandler.js](../backend/src/middlewares/errorHandler.js)
 
 ```js
 function toApiError(error) {
@@ -517,7 +519,7 @@ uploads/*
 !uploads/.gitkeep
 ```
 
-**환경 변수는 한 곳에서만 읽는다.** [backend/src/config/env.js](backend/src/config/env.js)
+**환경 변수는 한 곳에서만 읽는다.** [backend/src/config/env.js](../backend/src/config/env.js)
 
 ```js
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') })
@@ -622,7 +624,7 @@ users N ──── N diaries          좋아요는 다대다 → 중간 테이
 
 ### 3-2. 실제 스키마
 
-[backend/src/db/schema.sql](backend/src/db/schema.sql)
+[backend/src/db/schema.sql](../backend/src/db/schema.sql)
 
 ```sql
 CREATE TABLE IF NOT EXISTS users (
@@ -743,7 +745,7 @@ DELETE FROM diaries WHERE id = 3;
 
 ### 3-4. mysql2 — Node 에서 MySQL 쓰기
 
-[backend/src/config/db.js](backend/src/config/db.js)
+[backend/src/config/db.js](../backend/src/config/db.js)
 
 ```js
 const pool = mysql.createPool({
@@ -813,7 +815,7 @@ db.query('SELECT * FROM users WHERE email = ?', [email])
 
 `?` 를 쓰면 드라이버가 값을 **데이터로만** 취급한다. 값 안에 어떤 SQL 문자가 있어도 실행되지 않는다.
 
-**동적 조건도 배열로 안전하게 만든다** — [backend/src/models/diaryModel.js](backend/src/models/diaryModel.js)
+**동적 조건도 배열로 안전하게 만든다** — [backend/src/models/diaryModel.js](../backend/src/models/diaryModel.js)
 
 ```js
 async function findMine(viewerId, { dateKey, category, visibility, keyword } = {}) {
@@ -908,7 +910,7 @@ for (const diary of diaries) {
 ```
 
 **해결: 한 번에 가져와서 코드에서 묶는다.**
-[backend/src/models/diaryModel.js](backend/src/models/diaryModel.js)
+[backend/src/models/diaryModel.js](../backend/src/models/diaryModel.js)
 
 ```js
 async function attachImages(rows) {
@@ -940,7 +942,7 @@ async function attachImages(rows) {
 
 DB 를 손으로 만들면 다른 컴퓨터에서 재현할 수 없다. **스크립트로 만든다.**
 
-[backend/src/db/migrate.js](backend/src/db/migrate.js)
+[backend/src/db/migrate.js](../backend/src/db/migrate.js)
 
 ```js
 async function migrate() {
@@ -1155,7 +1157,7 @@ eyJhbGciOiJIUzI1NiJ9 . eyJzdWIiOiIxIiwiZXhwIjoxNzY... . dBjftJeZ4CVP-mB92K27uh..
 > 누구나 디코딩해서 읽을 수 있다. **비밀번호나 민감 정보를 절대 넣지 않는다.**
 > 서명은 "내용이 위조되지 않았음"만 보장한다.
 
-**인증 미들웨어** — [backend/src/middlewares/auth.js](backend/src/middlewares/auth.js)
+**인증 미들웨어** — [backend/src/middlewares/auth.js](../backend/src/middlewares/auth.js)
 
 ```js
 function readBearerToken(req) {
@@ -1210,7 +1212,7 @@ async function login({ email, password }) {
 인가(Authorization)  = 너 이거 해도 돼? → 서비스 계층, 실패하면 403
 ```
 
-**권한 규칙은 서비스 계층에 모은다.** [backend/src/services/diaryService.js](backend/src/services/diaryService.js)
+**권한 규칙은 서비스 계층에 모은다.** [backend/src/services/diaryService.js](../backend/src/services/diaryService.js)
 
 ```js
 /** 다이어리를 찾고, 없으면 404 를 던진다. */
@@ -1256,7 +1258,7 @@ async function toggleLike(id, viewerId) {
 
 ### 4-5. 입력 검증 — 신뢰할 수 있는 입력은 없다
 
-[backend/src/utils/validators.js](backend/src/utils/validators.js)
+[backend/src/utils/validators.js](../backend/src/utils/validators.js)
 
 ```js
 // 문제가 있으면 400 ApiError 를 던지고, 통과하면 "정리된 값"을 돌려준다
@@ -1371,7 +1373,7 @@ GROUP BY date_key;
 
 ### 4-7. 파일 업로드
 
-[backend/src/middlewares/upload.js](backend/src/middlewares/upload.js)
+[backend/src/middlewares/upload.js](../backend/src/middlewares/upload.js)
 
 ```js
 const storage = multer.diskStorage({
@@ -1481,45 +1483,63 @@ curl -i -X PUT http://localhost:4000/api/diaries/1 \
 
 "동작하는 서버"에서 "밖에 내놔도 되는 서버"로 넘어간다.
 
-### 5-1. 지금 이 프로젝트에 없는 것 (배포 전 필수)
+### 5-1. 공개 서버에 올리기 전에 필요한 것
 
-이 프로젝트는 학습용으로 완성도가 높지만, **공개 서버에 올리기 전에 다음이 필요하다.**
+①②는 이 프로젝트에 **직접 구현되어 있다.** 라이브러리 없이 만들어서 원리가 보이게 했다.
+③~⑤는 배포할 때 추가한다.
 
-**① 보안 헤더 — helmet**
+**① 보안 헤더** — [securityHeaders.js](../backend/src/middlewares/securityHeaders.js)
 
-```bash
-npm install helmet
+```js
+const HEADERS = {
+  'X-Content-Type-Options': 'nosniff',       // 이미지로 올린 파일이 스크립트로 실행되는 것을 막는다
+  'X-Frame-Options': 'DENY',                 // 다른 사이트가 iframe 에 넣지 못하게
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+}
+
+function securityHeaders(req, res, next) {
+  res.set(HEADERS)
+  next()
+}
+```
+
+헤더가 더 필요해지면 `helmet` 라이브러리로 바꾼다 (`app.use(helmet())` 한 줄).
+
+**② 로그인 시도 제한** — [rateLimit.js](../backend/src/middlewares/rateLimit.js)
+
+```js
+function rateLimit({ windowMs, max, message }) {
+  const hits = new Map()            // IP -> { count, resetAt }
+
+  return function (req, res, next) {
+    const now = Date.now()
+    let entry = hits.get(req.ip)
+    if (!entry || entry.resetAt <= now) {        // 처음이거나 시간이 지났으면 새로 센다
+      entry = { count: 0, resetAt: now + windowMs }
+      hits.set(req.ip, entry)
+    }
+    entry.count += 1
+    if (entry.count > max) {
+      res.set('Retry-After', String(Math.ceil((entry.resetAt - now) / 1000)))
+      return next(ApiError.tooManyRequests(message))   // 429
+    }
+    next()
+  }
+}
 ```
 
 ```js
-const helmet = require('helmet')
-app.use(helmet())    // cors 앞에 둔다
-```
-
-XSS, 클릭재킹, MIME 스니핑 등을 막는 HTTP 헤더를 한 번에 붙여 준다.
-
-**② 로그인 시도 제한 — rate limit**
-
-```bash
-npm install express-rate-limit
-```
-
-```js
-const rateLimit = require('express-rate-limit')
-
-const loginLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,   // 10분 동안
-  max: 10,                     // 10번까지
-  message: { message: '너무 많이 시도했습니다. 잠시 후 다시 시도해 주세요.' },
-  standardHeaders: true,
-})
-
-router.post('/login', loginLimiter, authController.login)
-router.post('/signup', loginLimiter, authController.signup)
+// routes/authRoutes.js
+router.post('/signup', authLimiter, authController.signup)
+router.post('/login', authLimiter, authController.login)
 ```
 
 **없으면 어떻게 되나?** 공격자가 초당 수백 번 비밀번호를 시도할 수 있다.
 8자리 비밀번호는 제한이 없으면 뚫린다.
+
+> **한계:** 기록을 서버 메모리에 둔다. 서버를 2대 이상 띄우면 서로의 기록을 모르므로
+> 그때는 Redis 를 저장소로 쓰는 `express-rate-limit` + `rate-limit-redis` 로 바꾼다.
 
 **③ 프록시 뒤에서 실제 IP 알기**
 
@@ -1557,19 +1577,34 @@ app.get('*', (req, res, next) => {
 
 ### 5-2. 성능
 
-**① 페이지네이션 — 목록이 커지면 필수**
+**① 페이지네이션 — 목록이 커지면 필수** (이 프로젝트에 구현됨)
 
-지금은 전체를 다 준다. 글이 1만 개가 되면 응답이 수 MB 가 된다.
+전체를 한 번에 주면, 글이 1만 개가 됐을 때 응답이 수 MB 가 된다.
 
 ```sql
--- 오프셋 방식 (간단하지만 뒤로 갈수록 느려짐)
+-- 오프셋 방식 (간단하지만 뒤로 갈수록 느려지고, 그사이 새 글이 생기면 중복/누락이 생김)
 SELECT * FROM diaries WHERE user_id = ? ORDER BY date_key DESC LIMIT 20 OFFSET 40;
 
--- 커서 방식 (권장 — 항상 빠름)
-SELECT * FROM diaries
-WHERE user_id = ? AND (date_key, id) < (?, ?)
-ORDER BY date_key DESC, id DESC LIMIT 20;
+-- 커서 방식 (이 프로젝트 — 항상 빠르고 중복이 없음)
+SELECT * FROM diaries d
+WHERE d.user_id = ?
+  AND (d.date_key < ? OR (d.date_key = ? AND d.id < ?))   -- "마지막으로 본 글보다 뒤"
+ORDER BY d.date_key DESC, d.id DESC
+LIMIT 11;                                                -- 10개 + 1개 (다음 페이지가 있는지 확인용)
 ```
+
+코드 흐름 — [pagination.js](../backend/src/utils/pagination.js), [diaryModel.js](../backend/src/models/diaryModel.js)
+
+```
+요청  GET /api/diaries?limit=10&cursor=2026-08-30_42
+  ↓ controller : parseCursor('2026-08-30_42') → { dateKey: '2026-08-30', id: '42' }
+  ↓ model      : 위 SQL 로 11개 조회 + COUNT(*) 로 전체 개수
+  ↓ service    : toPage(rows, 10) → 11개가 왔으면 10개만 주고 마지막 글로 nextCursor 생성
+응답  { items: [...10개], nextCursor: '2026-08-21_17', total: 37 }
+```
+
+**`LIMIT 11` 의 비밀:** "다음 페이지가 있나?" 를 알려고 COUNT 를 한 번 더 하는 대신,
+하나를 더 읽어 보고 있으면 "있다" 고 판단한다. 가장 흔한 실무 기법이다.
 
 **② 인덱스 확인**
 
@@ -1605,8 +1640,39 @@ app.use(morgan('combined'))
 
 **테스트 없이 고치면 무엇이 깨졌는지 알 수 없다.**
 
+이 프로젝트는 Node 에 내장된 테스트 도구(`node:test`)를 쓴다. 설치할 것이 없다.
+
 ```bash
-npm install -D vitest supertest
+npm test       # backend/test/*.test.js 를 모두 실행
+npm run lint   # ESLint
+```
+
+| 파일 | 무엇을 확인하나 | DB 필요 |
+| --- | --- | --- |
+| [validators.test.js](../backend/test/validators.test.js) | 입력 검증 규칙, KST 날짜 | 아니오 |
+| [pagination.test.js](../backend/test/pagination.test.js) | 커서 해석, 페이지 자르기 | 아니오 |
+| [middlewares.test.js](../backend/test/middlewares.test.js) | 요청 제한, 파일 경로 안전성 | 아니오 |
+| [diaryModel.test.js](../backend/test/diaryModel.test.js) | SQL 의 `?` 개수 = 값의 개수 (가짜 DB) | 아니오 |
+| [app.test.js](../backend/test/app.test.js) | 서버를 실제로 띄우고 HTTP 요청 (401, 404, 429, 보안 헤더) | 아니오 |
+
+```js
+// test/pagination.test.js — 기본 형태
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const { parseCursor } = require('../src/utils/pagination')
+
+test('parseCursor - 형식이 틀리면 400', () => {
+  assert.throws(() => parseCursor('abc_1'), { status: 400 })
+})
+```
+
+> **실제 사례:** 테스트를 처음 썼을 때 `parentId: 7`(숫자)을 보내면 400 이 나는 버그를 찾았다.
+> 프론트는 항상 문자열을 보내서 아무도 몰랐던 버그다. 테스트는 "내가 상상하지 못한 입력"을 대신 넣어 본다.
+
+DB 까지 포함한 테스트는 테스트 전용 데이터베이스를 만들고 `supertest` 로 하는 것이 일반적이다.
+
+```bash
+npm install -D supertest
 ```
 
 ```js
@@ -1905,6 +1971,6 @@ Level 5  보안 / 성능 / 로깅 / 테스트 / 배포          ← 밖에 내�
 최종 관문  백지에서 전체 만들기 → 조건 바꿔 다시 만들기
 ```
 
-프론트엔드는 [Study_frontend.md](Study_frontend.md) 를 함께 본다.
+프론트엔드는 [05-vue.md](05-vue.md) 를 함께 본다.
 이 문서의 Level 4(인증·권한)를 할 때 프론트엔드 Level 4(서버 통신·인증)를 같이 보면
 **토큰이 만들어져 저장되고 다시 붙어 오는 전체 흐름**이 한 번에 이해된다.

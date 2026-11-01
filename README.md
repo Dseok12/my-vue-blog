@@ -26,6 +26,25 @@
 
 ---
 
+## 학습 교재 — 프로그래밍을 처음 하는 사람부터
+
+이 프로젝트를 교재 삼아 **컴퓨터 기초 → HTML/CSS/JS → Vue → 백엔드 → 실무 도구 → 어떤 프로젝트든 설계하고 만들기** 까지
+단계별로 배우는 커리큘럼이 [study/](study/README.md) 에 있다. **[study/README.md](study/README.md) 에서 시작한다.**
+
+| 단계 | 문서 |
+| --- | --- |
+| 00 | [시작하기 — 컴퓨터, 웹의 원리, 설치, 터미널, Git](study/00-start.md) |
+| 01 | [HTML](study/01-html.md) |
+| 02 | [CSS](study/02-css.md) |
+| 03 | [JavaScript 기초](study/03-javascript.md) |
+| 04 | [브라우저 JavaScript — DOM, 이벤트, fetch, 순수 JS 할 일 앱](study/04-javascript-browser.md) |
+| 05 | [Vue — 이 프로젝트의 frontend](study/05-vue.md) |
+| 06 | [백엔드 — 이 프로젝트의 backend](study/06-backend.md) |
+| 07 | [Vue 심화 — 컴포저블, 테스트, TypeScript, 보안, 배포](study/07-vue-advanced.md) |
+| 08 | [어떤 프로젝트든 만드는 법 — 설계 공정, 프로젝트 사다리](study/08-build-any-project.md) |
+
+---
+
 ## 실행 방법
 
 ```bash
@@ -44,6 +63,36 @@ npm run dev
 ```
 
 실제 백엔드를 사용하려면 `frontend/.env` 에서 `VITE_USE_MOCK=false` 로 바꾼다.
-(`true` 로 두면 백엔드 없이 브라우저 저장소만으로 동작한다.)
+(`true` 로 두면 백엔드 없이 브라우저 저장소만으로 동작한다. 체험 계정 `demo@diary.test` / `demo1234`)
 
 자세한 API 규격은 [backend/README.md](backend/README.md) 를 참고한다.
+
+필요 환경: Node.js 22 LTS 이상 (최소 20.19), MySQL 8
+
+## 코드 검사와 테스트
+
+"warn, 에러 없이" 규칙을 사람 눈 대신 도구로 확인한다. 커밋 전에 실행한다.
+
+```bash
+# frontend
+npm run lint          # ESLint (Vue 규칙 포함)
+npm run format:check  # Prettier 코드 모양 검사 (npm run format 으로 자동 정리)
+npm test              # Vitest - src/**/*.test.js
+npm run build         # 빌드 경고 없음 확인
+
+# backend
+npm run lint          # ESLint
+npm test              # node --test - DB 없이 실행되는 테스트
+```
+
+## 주요 기능
+
+- 회원가입 / 로그인, 새로고침 후 로그인 유지, 사용 중 로그인 만료 시 로그인 화면으로 이동 후 복귀
+- 다이어리 작성 / 읽기 / 수정 / 삭제, 작성 중 화면 이탈 경고
+- 일기 / 독서기록 / 감정기록, 감정 선택, 공개 / 비공개
+- 공개 글의 좋아요, 댓글과 대댓글
+- 이미지 업로드 (10MB, jpg / jpeg / png / gif / webp, 5장), 쓰지 않게 된 파일 자동 정리
+- 왼쪽 하단 토글 캘린더 (일요일 시작, 글 있는 날 점 표시, 날짜 선택은 주소에 저장)
+- 목록 필터(종류·공개 여부·검색어)와 "더 보기" (커서 기반 페이지네이션)
+- 로그인 시도 횟수 제한, 기본 보안 헤더
+- 모바일 반응형, 키보드 / 스크린리더 접근성
