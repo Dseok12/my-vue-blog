@@ -1,4 +1,6 @@
-# 배포 교과서 — Oracle Cloud 무료 VM 에 이 프로젝트 올리기
+# Stage 9 — 배포: Oracle Cloud 무료 VM 에 이 프로젝트 올리기
+
+> 전체 로드맵: [study/README.md](README.md) · 이전: [08 어떤 프로젝트든 만드는 법](08-build-any-project.md) · 관련: [06 백엔드 Level 7](06-backend.md), [07 Vue 심화 10장](07-vue-advanced.md)
 
 **이 문서 하나만 따라 하면**, 지금 `frontend/` + `backend/` + MySQL 로 만든 이 앱을
 **평생 무료**로 인터넷에 배포하고 HTTPS 주소까지 붙일 수 있다.
@@ -7,7 +9,7 @@
 - 소요 시간: 처음이면 2~3시간
 - 결과물: `https://내주소` 로 접속되는, 재배포해도 이미지가 안 날아가는 실제 서비스
 
-> 이 방식은 `Study_backend.md` Level 7(PM2 + Nginx + VPS)을 그대로 실습하는 것이다.
+> 이 방식은 [06 백엔드](06-backend.md) Level 7(PM2 + Nginx + VPS)을 그대로 실습하는 것이다.
 > 관리형 서비스(Render, Vercel 등)와 달리 **서버 한 대를 직접 다루므로** 배우는 게 많다.
 
 ---
@@ -265,6 +267,10 @@ PORT=4000
 # 도메인이 아직 없으면 http://152.67.xxx.xxx 로 시작하고, HTTPS 붙인 뒤 바꾼다.
 CORS_ORIGIN=https://내주소
 PUBLIC_BASE_URL=https://내주소
+
+# Nginx 뒤에서 실행하므로 1 로 둔다. (없으면 모든 사용자가 127.0.0.1 로 보여서
+# 로그인 시도 제한이 전체 사용자에게 한꺼번에 걸린다)
+TRUST_PROXY=1
 
 DB_HOST=127.0.0.1
 DB_PORT=3306
@@ -615,8 +621,8 @@ free -h                       # 메모리
 ## 다음 단계
 
 - **GitHub Actions 로 자동 배포** — `main` 에 push 하면 서버가 알아서 `deploy.sh` 실행
-  (`Study_backend.md` Level 7-3 참고. `appleboy/ssh-action` 사용)
+  ([06 백엔드](06-backend.md) Level 7-3 참고. `appleboy/ssh-action` 사용)
 - **업로드를 오브젝트 스토리지로** — 서버를 여러 대로 늘리거나 VM 을 옮겨도 이미지가 유지됨
-  (`Study_backend.md` Level 6-12, Cloudflare R2 무료 10GB)
+  ([06 백엔드](06-backend.md) Level 6-12, Cloudflare R2 무료 10GB)
 - **모니터링** — UptimeRobot(무료)로 다운 감지 시 이메일 알림
-- **HTTPS 보안 강화** — `helmet`, rate limit (`Study_backend.md` Level 5-1)
+- **보안 강화** — 기본 보안 헤더와 로그인 시도 제한은 이미 있다. Nginx 뒤에서는 `app.set('trust proxy', 1)` 을 켜야 요청 제한이 실제 IP 를 본다. 헤더를 더 늘리려면 `helmet` ([06 백엔드](06-backend.md) Level 5-1)

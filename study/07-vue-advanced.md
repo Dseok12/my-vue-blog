@@ -395,6 +395,9 @@ expect(wrapper.emitted('update:modelValue')).toEqual([['2026-08-15']])
 
 ## 7. TypeScript 입문
 
+> 여기서는 **이 프로젝트의 데이터에 타입을 붙이는 첫걸음**만 다룬다.
+> "경계에 타입을 세운다"(API 응답 검증, zod 등) 같은 설계 이야기는 [05 Level 6-2](05-vue.md) 에서 이어진다.
+
 ### 7-1. 무엇을 얻나
 
 ```js
@@ -505,6 +508,9 @@ npm run build        # dist/ 에 각 파일 크기가 출력된다
 
 ## 10. 빌드와 배포
 
+> 이 장은 **배포의 원리와 방법 고르기**를 다룬다. 이 프로젝트를 무료 클라우드 서버 한 대에
+> 실제로 올리는 전 과정(서버 만들기 → Nginx → HTTPS → 운영)은 [09 배포](09-deploy.md) 를 그대로 따라 한다.
+
 ### 10-1. 빌드
 
 ```bash
@@ -561,7 +567,7 @@ CLIENT_ORIGIN=https://my-diary.netlify.app
 - [ ] `NODE_ENV=production`, 긴 랜덤 `JWT_SECRET`
 - [ ] DB 는 root 가 아닌 앱 전용 계정
 - [ ] `uploads/` 폴더가 서버 재시작/재배포 후에도 남는가? (많은 호스팅은 파일이 지워진다 → S3 같은 객체 저장소로)
-- [ ] 프록시 뒤라면 `app.set('trust proxy', 1)` (요청 제한이 실제 IP 를 보게)
+- [ ] 프록시(Nginx) 뒤라면 `.env` 에 `TRUST_PROXY=1` (요청 제한이 실제 IP 를 보게 — `app.js` 가 `trust proxy` 를 켠다)
 - [ ] HTTPS
 - [ ] `npm test`, `npm run lint` 통과
 

@@ -1,7 +1,10 @@
-# 프론트엔드 교과서 — Vue 3 로 다이어리 앱 만들기
+# Stage 5 — Vue 3 로 다이어리 앱 만들기
 
-이 문서 하나만 보고 **입문자 수준에서 시작해 이 프로젝트(`frontend/`) 수준, 그리고 그 이상까지** 도달하는 것을 목표로 한다.
+> 전체 로드맵: [study/README.md](README.md) · 이전: [04 브라우저 JavaScript](04-javascript-browser.md) · 다음: [06 백엔드](06-backend.md)
+
+이 문서는 **JavaScript 를 아는 사람이 이 프로젝트(`frontend/`) 수준, 그리고 그 이상까지** 도달하는 것을 목표로 한다.
 읽기만 하는 문서가 아니라 **여러 번 반복해서 만들어 보는 훈련 교재**다.
+프로그래밍이 처음이라면 [00 시작하기](00-start.md) 부터 순서대로 온다.
 
 ---
 
@@ -42,12 +45,12 @@ Level 7  팀·릴리스·운영     [ ]1회독  [ ]2회독  [ ]3회독
 
 ### 0-3. 시작 전 필요한 것
 
-- Node.js 18 이상 (`node -v` 로 확인)
+- Node.js 22 LTS 이상 (`node -v` 로 확인, 최소 20.19)
 - 코드 편집기 (VS Code + Vue 공식 확장 `Vue - Official`)
 - 브라우저 개발자 도구 사용법 (F12 → Console, Network, Elements 탭)
-- 선행 지식: HTML 태그, CSS 선택자, JavaScript 변수/함수/배열/객체
+- 선행 지식: HTML 태그, CSS 선택자, JavaScript 변수/함수/배열/객체, DOM 이벤트, async/await
 
-선행 지식이 부족하면 Level 0 부터 시작한다.
+선행 지식이 부족하면 아래 Level 0 을 풀어 본다. 하나라도 막히면 [01~04](README.md) 로 돌아간다.
 
 ---
 
@@ -119,7 +122,7 @@ npm install
 npm run dev
 ```
 
-이 프로젝트의 설정은 [frontend/vite.config.js](frontend/vite.config.js) 에 있다.
+이 프로젝트의 설정은 [frontend/vite.config.js](../frontend/vite.config.js) 에 있다.
 
 ```js
 export default defineConfig({
@@ -220,7 +223,7 @@ watch(count, (newValue, oldValue) => {
 - **값을 만들어 내면** → `computed` (예: 목록 개수, 필터 적용 여부)
 - **부수 효과를 일으키면** → `watch` (예: API 호출, 라우터 이동, localStorage 저장)
 
-[frontend/src/stores/diary.js](frontend/src/stores/diary.js) 의 실제 예:
+[frontend/src/stores/diary.js](../frontend/src/stores/diary.js) 의 실제 예:
 
 ```js
 // computed — 필터가 하나라도 걸려 있는지 "계산"
@@ -229,7 +232,7 @@ const hasFilter = computed(() =>
 )
 ```
 
-[frontend/src/views/DiaryListView.vue](frontend/src/views/DiaryListView.vue) 의 실제 예:
+[frontend/src/views/DiaryListView.vue](../frontend/src/views/DiaryListView.vue) 의 실제 예:
 
 ```js
 // watch — 주소의 날짜가 바뀌면 목록을 "다시 불러온다"(부수 효과)
@@ -300,26 +303,39 @@ onBeforeUnmount(() => {
 })
 ```
 
-[frontend/src/components/layout/AppSidebar.vue](frontend/src/components/layout/AppSidebar.vue) 의 실제 예 —
+[frontend/src/composables/useMediaQuery.js](../frontend/src/composables/useMediaQuery.js) 의 실제 예 —
 **등록했으면 반드시 해제한다**는 원칙을 보여 준다.
 
 ```js
-let mediaQuery = null
+export function useMediaQuery(query) {
+  const matches = ref(false)
+  let mediaQuery = null
 
-function onMediaChange(event) {
-  isNarrow.value = event.matches
+  function onChange(event) {
+    matches.value = event.matches
+  }
+
+  onMounted(() => {
+    mediaQuery = window.matchMedia(query)
+    matches.value = mediaQuery.matches
+    mediaQuery.addEventListener('change', onChange)
+  })
+
+  onBeforeUnmount(() => {
+    mediaQuery?.removeEventListener('change', onChange) // 정리하지 않으면 메모리 누수
+  })
+
+  return matches
 }
-
-onMounted(() => {
-  mediaQuery = window.matchMedia('(max-width: 1023px)')
-  isNarrow.value = mediaQuery.matches
-  mediaQuery.addEventListener('change', onMediaChange)
-})
-
-onBeforeUnmount(() => {
-  mediaQuery?.removeEventListener('change', onMediaChange) // 정리하지 않으면 메모리 누수
-})
 ```
+
+```js
+// AppSidebar.vue — 쓰는 쪽은 한 줄이다
+const isNarrow = useMediaQuery('(max-width: 1023px)')
+```
+
+> `useXxx` 로 시작하는 이 함수를 **컴포저블(composable)** 이라고 부른다.
+> 컴포넌트 안의 `ref` + 생명주기 로직을 함수로 빼낸 것이다. 자세한 내용은 [07 Vue 심화](07-vue-advanced.md) 1장.
 
 ### 1-6. 자주 하는 실수
 
@@ -461,7 +477,7 @@ const inputId = useId()  // 라벨과 입력창을 연결할 고유 id 를 Vue �
 
 **응용 — `computed` 의 get/set 으로 v-model 만들기**
 
-[frontend/src/components/layout/AppSidebar.vue](frontend/src/components/layout/AppSidebar.vue) 에서는
+[frontend/src/components/layout/AppSidebar.vue](../frontend/src/components/layout/AppSidebar.vue) 에서는
 **주소창의 쿼리 파라미터**를 `v-model` 로 다룬다. 고급 기법이다.
 
 ```js
@@ -546,7 +562,7 @@ css/
 └─ views/       페이지 — DiaryListView.css, LoginView.css, ...
 ```
 
-`base/` 만 [frontend/src/main.js](frontend/src/main.js) 에서 한 번 불러오고, 나머지는 각 컴포넌트가 직접 불러온다.
+`base/` 만 [frontend/src/main.js](../frontend/src/main.js) 에서 한 번 불러오고, 나머지는 각 컴포넌트가 직접 불러온다.
 
 ```js
 // main.js — 전역 스타일만
@@ -567,7 +583,7 @@ import '@/css/components/BaseButton.css'
 
 **① 디자인 토큰 — 모든 값의 단일 출처**
 
-[frontend/src/css/base/variables.css](frontend/src/css/base/variables.css)
+[frontend/src/css/base/variables.css](../frontend/src/css/base/variables.css)
 
 ```css
 :root {
@@ -694,7 +710,7 @@ import '@/css/components/BaseButton.css'
 
 ### 3-1. Vue Router — 화면 전환
 
-[frontend/src/router/index.js](frontend/src/router/index.js)
+[frontend/src/router/index.js](../frontend/src/router/index.js)
 
 ```js
 const routes = [
@@ -781,7 +797,7 @@ router.afterEach((to) => {
 
 **레이아웃 전환**
 
-[frontend/src/App.vue](frontend/src/App.vue) 에서 `meta.layout` 으로 껍데기를 바꾼다.
+[frontend/src/App.vue](../frontend/src/App.vue) 에서 `meta.layout` 으로 껍데기를 바꾼다.
 
 ```vue
 <script setup>
@@ -854,7 +870,7 @@ const isWide = computed(() => Boolean(route.meta.wide))
 
 **setup store 형태** — 컴포넌트의 `<script setup>` 과 똑같이 쓴다.
 
-[frontend/src/stores/auth.js](frontend/src/stores/auth.js)
+[frontend/src/stores/auth.js](../frontend/src/stores/auth.js)
 
 ```js
 export const useAuthStore = defineStore('auth', () => {
@@ -936,7 +952,7 @@ const { fetchMine, applyFilter } = diaryStore
 > **가장 흔한 Pinia 실수:** `const { items } = diaryStore` — 이렇게 하면 **반응성이 끊겨서**
 > 스토어가 바뀌어도 화면이 안 바뀐다. 상태는 반드시 `storeToRefs` 로 꺼낸다.
 
-**중복 코드를 함수로 묶기** — [frontend/src/stores/diary.js](frontend/src/stores/diary.js)
+**중복 코드를 함수로 묶기** — [frontend/src/stores/diary.js](../frontend/src/stores/diary.js)
 
 ```js
 // 모든 비동기 작업이 loading/error 처리를 반복하므로 하나로 묶는다
@@ -985,7 +1001,7 @@ async function toggleLike(id) {
 }
 ```
 
-**파생 데이터는 computed 로** — [frontend/src/stores/comment.js](frontend/src/stores/comment.js)
+**파생 데이터는 computed 로** — [frontend/src/stores/comment.js](../frontend/src/stores/comment.js)
 
 서버는 댓글을 **평평한 배열**로 준다. 화면에는 **트리**로 그려야 한다.
 저장은 평평하게, 표시는 계산으로.
@@ -1005,6 +1021,66 @@ const tree = computed(() => {
 
 > **원칙: 같은 데이터를 두 벌 저장하지 않는다.** 하나만 저장하고 나머지는 `computed` 로 만든다.
 > 두 벌 저장하면 반드시 어긋난다.
+
+### 3-3. "더 보기" 목록 — 페이지네이션 상태 관리
+
+글이 수천 개가 되면 한 번에 다 받을 수 없다. 서버는 10개씩 주고, 다음 위치(`nextCursor`)를 알려 준다.
+
+```
+첫 요청   GET /diaries?limit=10            → { items: [10개], nextCursor: 'A', total: 37 }
+더 보기   GET /diaries?limit=10&cursor=A   → { items: [10개], nextCursor: 'B', total: 37 }
+...
+마지막    GET /diaries?limit=10&cursor=C   → { items: [7개],  nextCursor: null, total: 37 }
+```
+
+화면은 커서의 내용을 몰라도 된다. **받은 `nextCursor` 를 그대로 다음 요청에 돌려줄 뿐이다.**
+(서버는 `날짜_작성시각_id`, mock 은 `id` 를 쓰지만 화면 코드는 같다.)
+
+"내 다이어리"와 "공개 피드" 가 똑같은 상태(목록, 커서, 개수, 더보기 로딩)를 가지므로
+[frontend/src/composables/usePagedList.js](../frontend/src/composables/usePagedList.js) 로 한 번만 만든다.
+
+```js
+export function usePagedList(loadPage) {
+  const items = ref([])
+  const nextCursor = ref(null)
+  const total = ref(0)
+  const loadingMore = ref(false)
+  const hasMore = computed(() => Boolean(nextCursor.value))
+
+  let version = 0   // 요청 번호표
+
+  async function reload() {          // 필터가 바뀌면 첫 페이지부터
+    version += 1
+    const requestVersion = version
+    const page = await loadPage(null)
+    if (requestVersion !== version) return items.value   // ← 늦게 온 옛날 응답은 버린다
+    items.value = page.items
+    nextCursor.value = page.nextCursor
+    total.value = page.total
+  }
+
+  async function loadMore() {        // 이어 붙이기
+    if (!nextCursor.value || loadingMore.value) return
+    ...
+    items.value.push(...page.items)
+  }
+  return { items, nextCursor, total, loadingMore, hasMore, reload, loadMore, removeItem }
+}
+```
+
+스토어에서는 API 함수만 넘겨 준다.
+
+```js
+// stores/diary.js
+const mine = usePagedList((cursor) => diaryApi.listMine({ ...filters, cursor, limit: PAGE_SIZE }))
+const feed = usePagedList((cursor) => diaryApi.listFeed({ keyword: filters.keyword, cursor, limit: PAGE_SIZE }))
+```
+
+> **"늦게 온 응답" 문제 (경쟁 상태, race condition)**
+> 검색어를 `a` → `ab` 로 빠르게 바꾸면 요청이 두 번 나간다. 네트워크 사정으로 `a` 의 응답이 **나중에**
+> 도착하면, 화면에는 `ab` 를 검색했는데 `a` 결과가 보인다. 요청마다 번호(`version`)를 붙이고
+> **가장 마지막 번호의 응답만 반영**하면 해결된다. 이 동작은
+> [usePagedList.test.js](../frontend/src/composables/usePagedList.test.js) 가 자동으로 확인한다.
 
 ### 백지 재현 과제 (2회독)
 
@@ -1065,7 +1141,7 @@ export const { auth, diaries, comments, uploads } = api
 
 ### 4-2. axios 인스턴스와 인터셉터
 
-[frontend/src/api/client.js](frontend/src/api/client.js)
+[frontend/src/api/client.js](../frontend/src/api/client.js)
 
 ```js
 export class ApiError extends Error {
@@ -1116,7 +1192,7 @@ client.interceptors.response.use(
 
 ### 4-3. API 함수 정의
 
-[frontend/src/api/server.js](frontend/src/api/server.js) — 얇게 유지한다. 로직은 스토어에 둔다.
+[frontend/src/api/server.js](../frontend/src/api/server.js) — 얇게 유지한다. 로직은 스토어에 둔다.
 
 ```js
 export const auth = {
@@ -1148,7 +1224,7 @@ export const uploads = {
 }
 ```
 
-**API 명세를 문서로 남긴다.** [frontend/src/api/index.js](frontend/src/api/index.js) 맨 위 주석처럼
+**API 명세를 문서로 남긴다.** [frontend/src/api/index.js](../frontend/src/api/index.js) 맨 위 주석처럼
 응답 형태와 권한 규칙을 적어 두면, 백엔드와 프론트가 같은 문서를 보고 개발할 수 있다.
 
 ```
@@ -1171,6 +1247,42 @@ Comment { id, diaryId, parentId, author: { id, nickname }, content, createdAt }
 ```
 
 **핵심은 ⑤번이다.** 이게 없으면 새로고침할 때마다 로그아웃된다.
+
+**⑦ 사용 중에 토큰이 만료되면?** 화면을 켜 둔 채로 7일이 지나면, 다음 요청이 401 을 받는다.
+이때 사용자를 로그인 화면으로 보내고, 다시 로그인하면 **보던 화면으로 돌려보낸다.**
+
+```js
+// api/client.js — api 폴더는 라우터·스토어를 모른다. "401 이 오면 이 함수를 불러 줘" 만 안다.
+let unauthorizedHandler = null
+export function onUnauthorized(handler) {
+  unauthorizedHandler = handler
+}
+
+client.interceptors.response.use(
+  (response) => response.data,
+  (error) => {
+    const status = error.response?.status ?? 0
+    // 로그인 실패(비밀번호 틀림)도 401 이므로 /auth/ 요청은 제외한다.
+    if (status === 401 && !isAuthRequest(error.config)) unauthorizedHandler?.()
+    ...
+  },
+)
+```
+
+```js
+// main.js — 실제로 무엇을 할지는 앱을 조립하는 곳에서 정한다.
+onUnauthorized(() => {
+  const authStore = useAuthStore()
+  if (!authStore.isLoggedIn) return
+  authStore.clearSession()
+  useUiStore().notify.error('로그인이 만료되었습니다. 다시 로그인해 주세요.')
+  router.push({ name: 'login', query: { redirect: router.currentRoute.value.fullPath } })
+})
+```
+
+> **왜 client.js 에서 바로 router 를 import 하지 않나?** `router → stores/auth → api → client → router`
+> 로 서로가 서로를 불러오는 **순환 참조**가 생긴다. "등록 함수" 를 두면 의존 방향이 한쪽으로만 흐른다.
+> 이 기법을 **의존성 역전**이라고 부른다.
 
 ```js
 async function restore() {
@@ -1195,7 +1307,7 @@ async function restore() {
 
 ### 4-5. 폼과 검증
 
-**검증 함수는 컴포넌트 밖으로 뺀다.** [frontend/src/utils/validators.js](frontend/src/utils/validators.js)
+**검증 함수는 컴포넌트 밖으로 뺀다.** [frontend/src/utils/validators.js](../frontend/src/utils/validators.js)
 
 ```js
 // 규칙: 문제가 있으면 오류 메시지(문자열), 없으면 빈 문자열을 반환한다
@@ -1244,7 +1356,7 @@ async function onSubmit() {
 
 ### 4-6. 파일 업로드
 
-[frontend/src/utils/image.js](frontend/src/utils/image.js) 의 검증 함수:
+[frontend/src/utils/image.js](../frontend/src/utils/image.js) 의 검증 함수:
 
 ```js
 export function validateImageFile(file) {
@@ -1266,7 +1378,7 @@ export function validateImageFile(file) {
 **확장자와 MIME 타입을 둘 다 본다.** 확장자만 보면 `.png` 로 이름만 바꾼 파일이 통과하고,
 MIME 만 보면 브라우저마다 값이 달라 오작동한다.
 
-업로드 컴포넌트의 흐름 ([ImageUploader.vue](frontend/src/components/diary/ImageUploader.vue)):
+업로드 컴포넌트의 흐름 ([ImageUploader.vue](../frontend/src/components/diary/ImageUploader.vue)):
 
 ```js
 async function addFiles(fileList) {
@@ -1304,7 +1416,7 @@ async function addFiles(fileList) {
 
 ### 4-7. 사용자 피드백 — 토스트
 
-작업 결과를 항상 알려 준다. [frontend/src/stores/ui.js](frontend/src/stores/ui.js)
+작업 결과를 항상 알려 준다. [frontend/src/stores/ui.js](../frontend/src/stores/ui.js)
 
 ```js
 function pushToast(message, type = 'info') {
@@ -1336,6 +1448,56 @@ uiStore.notify.error(err.message)
 | 작업 성공 | 토스트 (성공) |
 | 작업 실패 | 토스트 (오류) 또는 폼 위 오류 문구 |
 | 되돌릴 수 없는 작업 | `BaseModal` 확인 창 |
+| 작성 중에 화면을 떠나려 함 | `useLeaveGuard` 확인 창 (4-8) |
+
+### 4-8. 작성 중 이탈 경고
+
+긴 일기를 쓰다가 실수로 로고를 누르면 내용이 날아간다. 두 가지 길을 모두 막는다.
+
+```js
+// composables/useLeaveGuard.js
+export function useLeaveGuard(shouldConfirm, message = DEFAULT_MESSAGE) {
+  // ① 앱 안에서 다른 화면으로 이동 — 라우터 가드. false 를 돌려주면 이동이 취소된다.
+  onBeforeRouteLeave(() => {
+    if (!shouldConfirm()) return true
+    return window.confirm(message)
+  })
+
+  // ② 새로고침 / 탭 닫기 — 브라우저 이벤트
+  function onBeforeUnload(event) {
+    if (!shouldConfirm()) return
+    event.preventDefault()
+    event.returnValue = ''
+  }
+  onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
+  onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
+}
+```
+
+"바뀌었는가?" 는 폼이 직접 판단해서 부모에게 알린다. 처음 상태를 문자열로 찍어 두고 비교한다.
+
+```js
+// DiaryForm.vue
+const initialSnapshot = ref(JSON.stringify(form))
+const dirty = computed(() => JSON.stringify(form) !== initialSnapshot.value)
+watch(dirty, (value) => emit('dirty-change', value))
+```
+
+```js
+// DiaryEditorView.vue
+const dirty = ref(false)
+const saved = ref(false)
+useLeaveGuard(() => dirty.value && !saved.value)   // 저장에 성공한 뒤에는 묻지 않는다
+
+async function onSubmit(payload) {
+  ...
+  saved.value = true                 // ← router.push 보다 먼저!
+  router.push({ name: 'diary-detail', params: { id: diary.id } })
+}
+```
+
+> `saved.value = true` 를 `router.push` 뒤에 두면, 저장했는데도 "떠날까요?" 가 뜬다.
+> **순서가 곧 로직이다.**
 
 ### 백지 재현 과제 (2회독)
 
@@ -1346,7 +1508,7 @@ uiStore.notify.error(err.message)
 
 ### 확장 과제 (3회독)
 
-1. 401 응답을 받으면 자동으로 로그아웃하고 로그인 화면으로 보내는 응답 인터셉터를 추가한다
+1. 401 처리(4-4 의 ⑦)를 문서를 보지 않고 다시 만든다. 로그인 실패의 401 은 왜 제외해야 하는지 설명한다
 2. 검색어 입력에 **디바운스**(입력이 멈춘 뒤 300ms 후에 요청)를 적용한다
 3. 같은 요청이 연달아 나가지 않도록 진행 중인 요청을 취소한다 (`AbortController`)
 4. 업로드 진행률 표시를 추가한다 (`onUploadProgress`)
@@ -1424,6 +1586,38 @@ const formatted = computed(() => formatDate(diary.createdAt))
 <aside aria-label="캘린더">
 ```
 
+**사례 ① — 링크 안에 버튼을 넣지 않는다** ([DiaryCard.vue](../frontend/src/components/diary/DiaryCard.vue))
+
+카드 전체를 `<a>` 로 만들고 그 안에 좋아요 `<button>` 을 넣으면 **잘못된 HTML** 이다.
+스크린리더는 "링크 안의 버튼" 을 제대로 읽지 못하고, 좋아요를 누르면 상세로 이동해 버린다
+(그래서 예전 코드는 `@click.stop.prevent` 로 억지로 막고 있었다).
+
+```vue
+<article class="card">
+  <h3 class="card__title">
+    <router-link class="card__link" :to="...">{{ diary.title }}</router-link>
+  </h3>
+  ...
+  <LikeButton class="card__like" :diary="diary" />
+</article>
+```
+
+```css
+.card { position: relative; }
+.card__link::after { content: ''; position: absolute; inset: 0; }  /* 링크가 카드 전체를 덮는다 */
+.card__like { position: relative; z-index: 1; }                    /* 버튼은 그 위로 올린다 */
+.card:has(.card__link:focus-visible) { outline: 2px solid var(--color-primary); }
+```
+
+**사례 ② — 모달** ([BaseModal.vue](../frontend/src/components/common/BaseModal.vue))
+
+| 문제 | 해결 |
+| --- | --- |
+| 부모의 `overflow`/`z-index` 때문에 모달이 잘리거나 밑에 깔림 | `<Teleport to="body">` 로 body 바로 아래에 그린다 |
+| ESC 가 모달에 포커스가 있을 때만 동작 | `document` 에 keydown 을 등록하고, 닫힐 때 해제 |
+| 키보드 사용자가 모달이 열린 줄 모름 | 열리면 패널로 포커스를 옮기고, 닫히면 원래 버튼으로 돌려준다 |
+| 스크린리더가 제목을 모름 | `aria-labelledby` 로 제목 요소와 연결 |
+
 **추가로 확인할 것**
 
 - [ ] 마우스 없이 Tab 키만으로 모든 기능을 쓸 수 있는가?
@@ -1485,16 +1679,29 @@ try {
 }
 ```
 
-### 5-5. 다음 단계 — 여기서 더 높은 수준으로
+### 5-5. 코드 검사와 자동 테스트 — 이 프로젝트에 이미 있다
 
-이 프로젝트를 완성한 뒤 도전할 주제들. 위에서부터 순서대로 하면 좋다.
+```bash
+cd frontend
+npm run lint          # ESLint — 안 쓰는 변수, Vue 문법 실수
+npm run format        # Prettier — 줄바꿈·따옴표를 자동으로 통일
+npm test              # Vitest — src/**/*.test.js 실행
+```
+
+ESLint 를 처음 켰을 때 `CommentForm.vue` 에서 **선언만 하고 안 쓰는 `props` 변수**를 찾았다.
+테스트를 처음 썼을 때는 `DiaryCard.vue` 맨 위의 HTML 주석 때문에 **루트가 두 개**가 되는 문제를 찾았다.
+둘 다 눈으로는 몇 달이 지나도 못 찾는 종류다. 자세한 사용법은 [07 Vue 심화](07-vue-advanced.md) 5~6장,
+테스트를 어떻게 나눌지(피라미드)는 아래 Level 6-10.
+
+### 5-6. 다음 단계 — 여기서 더 높은 수준으로
+
+이 프로젝트를 완성한 뒤 도전할 주제들. 위에서부터 순서대로 하면 좋다. (Level 6~7, 07 에서 대부분 다룬다)
 
 | 주제 | 무엇을 얻나 | 시작점 |
 | --- | --- | --- |
 | **TypeScript 전환** | `diary.titel` 같은 오타를 편집기가 잡아 준다 | `npm create vite -- --template vue-ts`, `interface Diary` 정의부터 |
-| **자동 테스트** | 고쳐도 안 깨지는 확신 | Vitest(유틸/스토어) → Vue Test Utils(컴포넌트) → Playwright(전체 흐름) |
-| **ESLint + Prettier** | 스타일 논쟁 없이 일관된 코드 | `npm create @eslint/config`, 저장 시 자동 정렬 |
-| **무한 스크롤 / 페이지네이션** | 데이터가 많아져도 느려지지 않음 | `IntersectionObserver` + 커서 기반 페이징 |
+| **E2E 테스트** | 실제 브라우저로 "가입→작성→삭제" 전체 흐름 확인 | Playwright |
+| **무한 스크롤** | "더 보기" 버튼 없이 끝에 닿으면 자동으로 | `IntersectionObserver` + 이미 있는 `loadMore()` |
 | **다크 모드** | 디자인 토큰 설계의 실전 | `variables.css` 를 `[data-theme]` 별로 두 벌 |
 | **국제화(i18n)** | 글자를 코드에서 분리 | `vue-i18n`, 한국어/영어 두 벌 |
 | **PWA** | 설치 가능한 앱, 오프라인 | `vite-plugin-pwa` |
@@ -2196,6 +2403,10 @@ test('로그인하고 다이어리를 쓴다', async ({ page }) => {
 
 **하지 말 것:** 스타일·마크업 세부를 스냅샷으로 잔뜩 찍기. 리팩터링할 때마다 다 깨져서 아무도 안 본다.
 
+> **이 프로젝트의 실제 테스트**: 피라미드의 아래 두 층이 이미 있다 — 단위(`utils/*.test.js`,
+> `usePagedList.test.js`, `stores/comment.test.js`)와 컴포넌트(`BaseButton`, `CalendarPanel`, `DiaryCard`).
+> 위 예시의 Testing Library + MSW 대신 기본 도구(Vue Test Utils, `vi.mock`)를 썼다. 지도는 [07 6장](07-vue-advanced.md).
+
 ### 백지 재현 과제 (2회독)
 
 1. 이 프로젝트를 FSD 구조(`shared`/`entities`/`features`/`pages`)로 재배치하고, ESLint 로 의존성 방향을 강제한다
@@ -2590,5 +2801,7 @@ Level 7  Git 협업 / 모노레포 / CI·CD / 관측 / ADR          ← 팀과 �
 최종 관문 II  대형 프로젝트 시뮬레이션 (혼자서 팀처럼)
 ```
 
-백엔드는 [Study_backend.md](Study_backend.md) 를 함께 본다.
+백엔드는 [06 백엔드](06-backend.md) 를 함께 본다.
 Level 4(서버 통신)를 할 때 백엔드 Level 4(인증·권한)를 같이 보면 이해가 빠르다.
+
+다 끝나면 [07 Vue 심화](07-vue-advanced.md) → [08 어떤 프로젝트든 만드는 법](08-build-any-project.md) → [09 배포](09-deploy.md) 로 간다.

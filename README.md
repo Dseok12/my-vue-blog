@@ -26,14 +26,24 @@
 
 ---
 
-## 학습 문서
+## 학습 문서 — 프로그래밍을 처음 하는 사람부터
 
-이 프로젝트를 교재 삼아 정리한 문서입니다. 코드와 문서가 서로를 가리키도록 맞춰 두었습니다.
+이 프로젝트를 교재 삼아 **컴퓨터 기초 → HTML/CSS/JS → Vue → 백엔드 → 실무 → 어떤 프로젝트든 설계하고 만들기 → 배포**
+까지 단계별로 배우는 커리큘럼입니다. 코드와 문서가 서로를 가리키도록 맞춰 두었습니다.
+**[study/README.md](study/README.md) 에서 시작합니다.** (로드맵, 시작 위치 진단, 학습법, 졸업 기준)
 
-| 문서 | 내용 |
+| 단계 | 문서 |
 | --- | --- |
-| [Study_frontend.md](Study_frontend.md) | Vue 3 — 컴포넌트, 라우터, Pinia, CSS 설계까지 단계별 |
-| [Study_backend.md](Study_backend.md) | Node.js + Express + MySQL — 미들웨어, SQL, 인증, 배포까지 단계별 |
+| 00 | [시작하기 — 컴퓨터, 웹의 원리, 설치, 터미널, Git](study/00-start.md) |
+| 01 | [HTML](study/01-html.md) |
+| 02 | [CSS](study/02-css.md) |
+| 03 | [JavaScript 기초](study/03-javascript.md) |
+| 04 | [브라우저 JavaScript — DOM, 이벤트, fetch, 순수 JS 할 일 앱](study/04-javascript-browser.md) |
+| 05 | [Vue 3 — 컴포넌트, 라우터, Pinia, 인증, 대형 프로젝트 아키텍처](study/05-vue.md) |
+| 06 | [Node.js + Express + MySQL — 미들웨어, SQL, 인증, 운영](study/06-backend.md) |
+| 07 | [Vue 심화 — 컴포저블, 반응성, 테스트, 보안, 생태계](study/07-vue-advanced.md) |
+| 08 | [어떤 프로젝트든 만드는 법 — 설계 공정, 프로젝트 사다리](study/08-build-any-project.md) |
+| 09 | [배포 — Oracle Cloud 무료 VM 에 올리기](study/09-deploy.md) |
 
 ---
 
@@ -79,6 +89,26 @@ npm run dev               # http://localhost:3000
 
 > 백엔드 없이 화면만 보고 싶다면 `frontend/.env` 의 `VITE_USE_MOCK` 을 `true` 로 바꾸면
 > 브라우저 저장소를 사용하는 임시 데이터로 동작합니다.
+
+필요 환경: Node.js 22 LTS 이상 (최소 20.19), MySQL 8
+
+---
+
+## 코드 검사와 테스트
+
+"warn, 에러 없이" 규칙을 사람 눈 대신 도구로 확인합니다. 커밋 전에 실행합니다.
+
+```bash
+# frontend
+npm run lint          # ESLint (Vue 규칙 포함)
+npm run format:check  # Prettier 코드 모양 검사 (npm run format 으로 자동 정리)
+npm test              # Vitest - src/**/*.test.js
+npm run build         # 빌드 경고 없음 확인
+
+# backend
+npm run lint          # ESLint
+npm test              # node --test - DB 없이 실행되는 테스트
+```
 
 ---
 

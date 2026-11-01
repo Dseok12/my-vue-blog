@@ -600,9 +600,10 @@ console.log(add(1, 2), multiply(2, 3), PI)
 
 Node 에서 `import` 를 쓰려면 `package.json` 에 `"type": "module"` 이 있어야 한다 (`npm init -y` 후 추가).
 
-> **이 프로젝트의 두 가지 모듈 방식**
-> 프론트엔드는 `import / export` (ES 모듈), 백엔드는 `require / module.exports` (CommonJS) 를 쓴다.
-> 하는 일은 같고 문법만 다르다. 새 프로젝트라면 양쪽 모두 ES 모듈을 쓰는 추세다.
+> **이 프로젝트는 프론트엔드와 백엔드 모두 ES 모듈(`import / export`)을 쓴다.**
+> 그래서 [backend/package.json](../backend/package.json) 에도 `"type": "module"` 이 있다.
+> 인터넷의 오래된 Node 예제에서는 `require(...)` / `module.exports` (CommonJS) 를 자주 보게 되는데,
+> 하는 일은 같고 문법만 다르다. 새 코드는 ES 모듈로 쓴다.
 
 ---
 

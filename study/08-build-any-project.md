@@ -1,6 +1,6 @@
 # Stage 8 — 어떤 프로젝트든 만드는 법
 
-> 전체 로드맵: [README](README.md) · 이전: [07 Vue 심화](07-vue-advanced.md)
+> 전체 로드맵: [README](README.md) · 이전: [07 Vue 심화](07-vue-advanced.md) · 다음: [09 배포](09-deploy.md)
 
 ## 목표
 
@@ -72,16 +72,18 @@
 요구사항에 숨어 있는 규칙을 **번호를 붙여** 적는다. 나중에 이것이 검증 코드와 테스트가 된다.
 
 ```
-R1. 비공개 글은 작성자만 읽을 수 있다                 → diaryService.assertReadable
-R2. 수정·삭제는 작성자만 할 수 있다                   → diaryService.assertOwner
-R3. 좋아요·댓글은 공개 글에만 가능하다                 → diaryService.assertPublic
-R4. 대댓글은 1단계까지 (답글의 답글은 같은 단계로)       → commentService.create
-R5. 날짜는 한국 시간 기준                            → utils/date.js 의 TIME_ZONE
-R6. 이미지는 10MB 이하, jpg/jpeg/png/gif/webp, 5장까지 → config.js, middlewares/upload.js
-R7. 캘린더 첫 요일은 일요일                          → buildMonthMatrix
+R1. 비공개 글은 작성자만 읽을 수 있다                 → diary.service.js 의 get()
+R2. 수정·삭제는 작성자만 할 수 있다                   → diary.service.js 의 update() / remove()
+R3. 좋아요·댓글은 공개(이고 가림되지 않은) 글에만        → diary.service.js toggleLike(), comment.service.js
+R4. 대댓글은 같은 글의 댓글에만, 1단계까지              → comment.service.js
+R5. 신고하면 자동으로 가림, 관리자만 해제              → report.service.js, admin.service.js
+R6. 날짜는 한국 시간 기준                            → utils/date.js 의 TIME_ZONE
+R7. 이미지는 10MB 이하, jpg/jpeg/png/gif/webp, 5장까지 → config/index.js, middlewares/upload.js
+R8. 캘린더 첫 요일은 일요일                          → frontend utils/date.js 의 buildMonthMatrix
 ```
 
-[CLAUDE.md](../CLAUDE.md) 의 "수행되어야 할 리스트" 가 바로 이 단계의 결과물이다.
+[claude.md](../claude.md) 의 "수행되어야 할 리스트" 가 바로 이 단계의 결과물이다.
+규칙이 늘어나면 목록 끝에 번호를 이어 붙인다 — R5 는 나중에 추가된 기능(신고·관리자)이다.
 
 ---
 
@@ -97,7 +99,12 @@ R7. 캘린더 첫 요일은 일요일                          → buildMonthMat
 | 상세 | `/diaries/:id` | 회원 (비공개는 작성자만) | 본문, 이미지, 좋아요, 댓글 |
 | 작성 / 수정 | `/diaries/new`, `/diaries/:id/edit` | 회원 (수정은 작성자만) | 폼 |
 | 공개 피드 | `/feed` | 회원 | 공개 글 목록 |
+| 마이페이지 | `/users/:id` | 회원 (남의 페이지는 공개 글만) | 프로필, 그 회원의 글, 닉네임·비밀번호 변경(본인) |
+| 신고 관리 | `/admin` | 관리자 | 신고 목록, 가림 / 해제 / 기각 |
 | 404 | 그 외 | 누구나 | 안내 |
+
+> 마이페이지와 신고 관리는 **나중에 추가된 화면**이다(기능 18~22). 처음 설계에 모든 화면이 있을 필요는 없다.
+> 다만 추가할 때도 이 표부터 고치고, 그다음 ③④⑤ 를 차례로 고친다.
 
 ### 화면 흐름
 
@@ -140,7 +147,7 @@ R7. 캘린더 첫 요일은 일요일                          → buildMonthMat
 
 ### 명사를 찾는다
 
-요구사항 문장에서 **명사**에 밑줄을 긋는다: 회원, 다이어리(글), 이미지, 댓글, 좋아요.
+요구사항 문장에서 **명사**에 밑줄을 긋는다: 회원, 다이어리(글), 이미지, 댓글, 좋아요, 신고.
 명사가 테이블 후보, 그 명사를 설명하는 말이 컬럼 후보다.
 
 ### 관계를 정한다
@@ -151,29 +158,31 @@ diaries 1 ───< N diary_images   글 하나에 이미지 여러 장
 diaries 1 ───< N comments       글 하나에 댓글 여러 개
 comments 1 ───< N comments      댓글 하나에 답글 여러 개 (자기 참조)
 users N >───< N diaries         좋아요: 회원과 글의 다대다 → 중간 테이블 diary_likes
-     (diary_likes)
+users N >───< N diaries         신고: 회원과 글의 다대다 → diary_reports (한 사람이 한 글에 한 번)
 ```
 
 ### ERD (표로 그리기)
 
+이 프로젝트의 id 는 모두 `CHAR(36)` UUID 다. (번호가 아니라 추측할 수 없는 값 — 주소에 다른 글 번호를 넣어 보는 시도를 어렵게 한다)
+
 ```
 users                    diaries                       comments
 ┌──────────────┐        ┌─────────────────┐          ┌─────────────────┐
-│ id        PK │◄──┐    │ id           PK │◄──┐      │ id           PK │◄─┐
-│ email     UQ │   └────│ user_id      FK │   ├──────│ diary_id     FK │  │
-│ password_hash│        │ title           │   │      │ parent_id    FK │──┘
-│ nickname  UQ │        │ content         │   │      │ user_id      FK │
+│ id   UUID PK │◄──┐    │ id      UUID PK │◄──┐      │ id      UUID PK │◄─┐
+│ email     UQ │   └────│ author_id    FK │   ├──────│ diary_id     FK │  │
+│ nickname  UQ │        │ title           │   │      │ parent_id    FK │──┘
+│ password_hash│        │ content         │   │      │ author_id    FK │
 │ created_at   │        │ category  ENUM  │   │      │ content         │
 └──────────────┘        │ mood            │   │      │ created_at      │
-                        │ date_key  (KST) │   │      └─────────────────┘
+                        │ date_key  DATE  │   │      └─────────────────┘
                         │ visibility ENUM │   │
-                        │ created_at      │   │      diary_likes
-                        │ updated_at      │   │      ┌─────────────────┐
-                        └─────────────────┘   ├──────│ diary_id  PK,FK │
-                                              │      │ user_id   PK,FK │
-                                              │      └─────────────────┘
-                                              │      diary_images
-                                              └──────│ diary_id     FK │
+                        │ is_hidden  (신고)│   │      diary_likes            diary_reports
+                        │ created_at      │   │      ┌─────────────────┐   ┌──────────────────┐
+                        │ updated_at      │   ├──────│ diary_id  PK,FK │   │ diary_id      FK │
+                        └─────────────────┘   │      │ user_id   PK,FK │   │ reporter_id   FK │
+                                              │      └─────────────────┘   │ reason, status   │
+                                              │      diary_images          │ UQ(diary,reporter)│
+                                              └──────│ diary_id     FK │   └──────────────────┘
                                                      │ url, name, sort │
 ```
 
@@ -182,7 +191,7 @@ users                    diaries                       comments
 - [ ] 각 테이블에 `id`, `created_at` 이 있는가
 - [ ] 중복되면 안 되는 값에 UNIQUE 가 있는가 (이메일, 닉네임, 좋아요 한 번)
 - [ ] 부모가 지워지면 자식은 어떻게 되나 (`ON DELETE CASCADE`)
-- [ ] 자주 검색하는 조건에 인덱스가 있는가 (`user_id + date_key`)
+- [ ] 자주 검색하는 조건에 인덱스가 있는가 (`author_id + date_key + created_at` — 목록 정렬 순서 그대로)
 - [ ] **계산할 수 있는 값을 저장하고 있지는 않은가** — 좋아요 수는 저장하지 않고 센다
 - [ ] 시간대는? (시각은 UTC, 날짜 키는 KST 문자열 — [schema.sql](../backend/src/db/schema.sql) 맨 위 주석)
 
@@ -329,7 +338,7 @@ DiaryListView
 
 ## 8-10. ⑨ 배포와 회고
 
-배포는 [07 의 10장](07-vue-advanced.md). 배포한 다음 **README 를 쓴다** — 포트폴리오의 얼굴이다.
+배포는 [07 의 10장](07-vue-advanced.md)(방법 고르기)과 [09 배포](09-deploy.md)(이 앱을 실제로 올리기). 배포한 다음 **README 를 쓴다** — 포트폴리오의 얼굴이다.
 
 ```markdown
 # 프로젝트 이름
@@ -523,3 +532,5 @@ category      카테고리 목록 (폼의 select 에서 쓴다)
 
 그다음부터는 교재가 아니라 **문제가 선생님**이다. 만들고 싶은 것을 만들고,
 막히면 공식 문서를 읽고, 배운 것을 README 와 학습 일지에 남긴다. 그 기록이 쌓여 실력이 된다.
+
+다음: [09 배포 — 이 앱을 실제 인터넷에 올리기](09-deploy.md). 더 큰 서비스로 가려면 [05 Vue Level 6~7](05-vue.md), [06 백엔드 Level 6~7](06-backend.md).
