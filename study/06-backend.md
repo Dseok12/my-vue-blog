@@ -359,6 +359,42 @@ async function start() {
 }
 ```
 
+**연결만 확인하면 부족하다 — 구조도 확인한다**
+
+"연결은 되는데 테이블 구조가 코드와 다른" 경우가 있다. 예전 버전이 만든 DB 에 연결되면
+서버는 정상적으로 켜지고, 그 뒤 **모든 요청이** `Unknown column 'd.author_id'` 로 실패한다.
+화면에는 "서버에서 문제가 발생했습니다" 만 보여서 원인을 찾기 어렵다. (이 프로젝트가 실제로 겪었다)
+
+그래서 켤 때 코드가 기대하는 컬럼이 있는지 확인하고, 없으면 **이유와 해결법을 알려 주고 종료한다.**
+
+```js
+const REQUIRED_COLUMNS = [
+  ['diaries', 'author_id'],
+  ['diaries', 'is_hidden'],
+  ['diary_reports', 'reporter_id'],
+  // ...
+]
+
+async function findMissingColumns() {
+  // information_schema: MySQL 이 "자기 자신의 구조" 를 알려 주는 특별한 데이터베이스
+  const rows = await query(
+    'SELECT table_name AS t, column_name AS c FROM information_schema.columns WHERE table_schema = ?',
+    [config.db.database],
+  )
+  const existing = new Set(rows.map((row) => row.t + '.' + row.c))
+  return REQUIRED_COLUMNS.map(([t, c]) => t + '.' + c).filter((name) => !existing.has(name))
+}
+```
+
+```
+[db] my_diary 의 테이블 구조가 현재 코드와 맞지 않습니다.
+     없는 항목: diaries.author_id, diaries.is_hidden, diary_reports.reporter_id
+     · 예전 버전의 DB 라면 : .env 의 DB_NAME 을 새 이름으로 바꾸고 npm run db:migrate
+```
+
+> **일찍, 구체적으로 실패한다 (fail fast).** 문제를 가장 빨리 알 수 있는 시점에, 고치는 방법과 함께 알린다.
+> "요청마다 원인 모를 500" 과 "시작할 때 이유를 말하고 종료" 중 어느 쪽이 고치기 쉬운지는 분명하다. → [11 버그 사례집](11-bug-casebook.md) 사례 1
+
 ### 2-3. 라우터 — 주소를 파일로 나눈다
 
 [backend/src/routes/index.js](../backend/src/routes/index.js)
@@ -1344,7 +1380,7 @@ const CATEGORIES = ['diary', 'book', 'emotion']
 if (!CATEGORIES.includes(category)) throw ApiError.badRequest('종류 값이 올바르지 않습니다.')
 ```
 
-**URL 파라미터도 검증한다.** 검증 안 하면 `/api/diaries/abc` 가 이상한 SQL 오류를 낸다.
+**URL 파라미터도 입력이다.** id 가 숫자인 프로젝트라면 `/api/diaries/abc` 가 이상한 SQL 오류를 내지 않게 형식을 확인한다.
 
 ```js
 function parseId(value, message = '잘못된 요청입니다.') {
@@ -1353,6 +1389,49 @@ function parseId(value, message = '잘못된 요청입니다.') {
   return id
 }
 ```
+
+이 프로젝트는 id 가 UUID 문자열이고 항상 `WHERE id = ?` 로만 쓰므로, 엉뚱한 값이 와도 "그런 글이 없다(404)" 로 자연스럽게 끝난다.
+(커서처럼 **SQL 에 여러 조각으로 들어가는 값**은 반드시 형식을 확인한다 — `utils/pagination.js` 의 `parseCursor`)
+
+**길이 제한 — DB 컬럼의 크기가 곧 검증 규칙이다**
+
+테이블을 만들 때 `VARCHAR(60)`, `TEXT` 처럼 크기를 정했다. 검증 없이 더 긴 값을 넣으면 DB 가 거절한다.
+
+```
+ER_DATA_TOO_LONG: Data too long for column 'content' at row 1     → 화면에는 "서버에서 문제가 발생했습니다" (500)
+```
+
+이것은 서버의 잘못(500)이 아니라 **사용자의 입력 문제(400)** 다. 사용자가 고칠 수 있게 구체적으로 알려야 한다.
+
+```js
+// utils/validate.js — schema.sql 의 컬럼 크기를 그대로 옮겨 적는다
+export const LIMITS = {
+  email: 191,     // users.email VARCHAR(191)
+  password: 72,   // bcrypt 는 72바이트까지만 비교에 쓴다
+  title: 60,      // diaries.title VARCHAR(60)
+  content: 20000, // TEXT 는 65,535 "바이트". 한글 한 글자 = 3바이트 → 20,000자면 60,000바이트로 안전
+  comment: 1000,
+}
+
+export function requireContent(value, label = '내용', maxLength = LIMITS.content) {
+  const content = asString(value).trim()
+  if (!content) throw ApiError.badRequest(label + '을 입력해 주세요.')
+  if (content.length > maxLength) {
+    throw ApiError.badRequest(label + '은 ' + maxLength.toLocaleString('ko-KR') + '자 이하여야 합니다.')
+  }
+  return content
+}
+```
+
+| 층 | 하는 일 | 파일 |
+| --- | --- | --- |
+| 화면 | 입력하는 동안 막는다 (`maxlength`, 폼 검증) — 편의 | `frontend/src/utils/validators.js` |
+| 서버 검증 | 400 과 구체적인 문구 — **진짜 방어선** | `backend/src/utils/validate.js` |
+| 오류 처리기 | 그래도 놓쳤으면 `ER_DATA_TOO_LONG` 을 400 으로 — 안전망 | `backend/src/middlewares/error.js` |
+| DB | 컬럼 크기 — 마지막 보루 | `backend/src/db/schema.sql` |
+
+> **`VARCHAR(60)` 의 60 은 "글자 수", `TEXT` 의 65,535 는 "바이트 수" 다.** 단위가 다르다는 점을 놓치면
+> "한글로 쓰면 영어의 1/3 밖에 못 쓴다" 는 버그가 생긴다. → [11 버그 사례집](11-bug-casebook.md) 사례 8
 
 ### 4-6. 시간대 — 한국 시간 다루기
 
@@ -1717,7 +1796,62 @@ test('parseCursor - 형식이 틀리면 400', () => {
 > `app.js` 가 `createApp()` 함수로 앱을 만들어 주기 때문에, 테스트에서 포트 0(빈 포트 아무거나)으로
 > 띄우고 `fetch` 로 진짜 요청을 보낼 수 있다. 이렇게 **서버 실행(server.js)과 앱 구성(app.js)을 나눈 것**이 테스트를 쉽게 만든다.
 
-DB 까지 포함한 테스트(남의 글 수정 → 403 등)는 테스트 전용 데이터베이스를 만들고 `supertest` 로 하는 것이 일반적이다.
+**통합 테스트 — 실제 MySQL 로 전체 흐름을 확인한다**
+
+위 테스트들은 DB 없이 돈다. 빠르지만 **SQL 이 실제로 맞는지는 알 수 없다.** 그래서 한 벌이 더 있다.
+
+```bash
+npm run test:db      # backend/test-db/*.test.js — MySQL 이 켜져 있어야 한다
+```
+
+[test-db/api.test.js](../backend/test-db/api.test.js) 가 하는 일:
+
+```js
+const TEST_DB = (process.env.DB_NAME || 'my_vue_blog') + '_test'
+process.env.DB_NAME = TEST_DB                       // ① 테스트 전용 DB 이름으로 바꾼다 (앱을 불러오기 "전에")
+
+execFileSync(process.execPath, ['src/db/migrate.js', '--fresh'], { env: process.env })   // ② 빈 테이블을 새로 만든다
+
+const { createApp } = await import('../src/app.js')  // ③ 그다음에 앱을 불러온다
+
+test.after(async () => {
+  await pool.query('DROP DATABASE IF EXISTS `' + TEST_DB + '`')   // ④ 끝나면 지운다
+  await pool.end()
+})
+```
+
+**개발용 데이터는 절대 건드리지 않는다.** 테스트는 "항상 같은 상태에서 시작" 해야 결과를 믿을 수 있으므로, 전용 DB 를 매번 새로 만든다.
+
+| 테스트 | 확인하는 것 |
+| --- | --- |
+| 회원가입 / 로그인 | 중복 409, 틀린 비밀번호와 없는 계정이 **같은** 401 메시지, 응답에 비밀번호 없음 |
+| 다이어리 CRUD | 비공개 글은 작성자만(403), 남의 글 수정·삭제 불가(403), 지운 글은 404 |
+| 길이 제한 | 20,001자는 400, 20,000자는 **실제로 저장된다** |
+| "더 보기" | 같은 날짜 글이 여러 개여도 3쪽에 걸쳐 중복·누락 없이 정확한 순서로 나온다 |
+| 좋아요 / 댓글 | 공개 글에만, 닉네임 가림, 답글의 답글은 같은 단계로, 댓글을 지우면 답글도 함께 |
+| 신고 / 관리자 | 자동 가림, 남은 못 보고 작성자·관리자는 본다, 일반 회원은 관리자 API 403 |
+| 마이페이지 | 남에게는 공개 글만, 닉네임 중복 409, 비밀번호를 바꾸면 옛 비밀번호로 로그인 불가 |
+
+```js
+test('목록 - 같은 날짜 글이 여러 개여도 "더 보기" 에 중복과 누락이 없다', async () => {
+  // 글 7개를 날짜 두 가지로 만든 뒤, 3개씩 끝까지 넘겨 본다
+  const seen = []
+  let cursor = ''
+  do {
+    const page = await api('GET', '/diaries?limit=3' + (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''), { token })
+    seen.push(...page.body.items.map((item) => item.title))
+    cursor = page.body.nextCursor
+  } while (cursor)
+
+  assert.deepEqual(seen, ['글 4', '글 3', '글 2', '글 1', '글 7', '글 6', '글 5'])
+})
+```
+
+> **단위 테스트와 통합 테스트는 서로를 대신하지 못한다.**
+> 단위 테스트(`npm test`)는 1초 만에 끝나서 저장할 때마다 돌릴 수 있지만 SQL 을 실행하지 않는다.
+> 통합 테스트(`npm run test:db`)는 진짜를 확인하지만 MySQL 이 필요하고 느리다. 커밋 전에는 둘 다 돌린다.
+
+`fetch` 대신 `supertest` 라이브러리를 쓰면 서버를 포트에 띄우지 않고도 같은 테스트를 쓸 수 있다. 널리 쓰이는 방식이다.
 
 ```bash
 npm install -D vitest supertest
