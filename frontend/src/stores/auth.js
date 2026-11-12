@@ -77,6 +77,8 @@ export const useAuthStore = defineStore('auth', () => {
   async function logout() {
     try {
       await authApi.logout()
+    } catch {
+      // 서버에 알리지 못해도(네트워크 끊김 등) 로그아웃은 된다. 토큰을 지우는 것이 곧 로그아웃이다.
     } finally {
       clearSession()
     }

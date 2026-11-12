@@ -513,14 +513,18 @@ export const comments = {
     if (diary.isHidden) {
       throw new ApiError('가림 처리된 글에는 댓글을 쓸 수 없습니다.', 400)
     }
-    if (parentId && !db.comments.some((item) => item.id === parentId)) {
+    const parent = parentId
+      ? db.comments.find((item) => item.id === parentId && item.diaryId === diaryId)
+      : null
+    if (parentId && !parent) {
       throw new ApiError('원본 댓글을 찾을 수 없습니다.', 404)
     }
 
     const comment = {
       id: nextId('c'),
       diaryId,
-      parentId,
+      // 대댓글에 단 답글은 같은 단계로 묶는다. (백엔드 comment.service.js 와 같은 규칙)
+      parentId: parent?.parentId || parentId,
       authorId: user.id,
       content: content.trim(),
       createdAt: new Date().toISOString(),

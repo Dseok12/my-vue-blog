@@ -4,6 +4,8 @@ import test from 'node:test'
 
 import { isValidDateKey, toDateKey } from '../src/utils/date.js'
 import {
+  LIMITS,
+  requireContent,
   optionalKeyword,
   optionalOneOf,
   requireDiaryPayload,
@@ -74,4 +76,19 @@ test('날짜 - 존재하지 않는 날짜는 거절하고, 한국 시간 기준�
   assert.equal(isValidDateKey('2026-02-30'), false)
   // UTC 2026-08-29 15:30 = KST 2026-08-30 00:30
   assert.equal(toDateKey(new Date('2026-08-29T15:30:00Z')), '2026-08-30')
+})
+
+test('길이 제한 - DB 컬럼보다 긴 값은 검증에서 400 으로 막는다', () => {
+  const base = { title: '제목', content: '내용', dateKey: '2026-08-30' }
+  assert.equal(requireDiaryPayload({ ...base, content: '가'.repeat(LIMITS.content) }).content.length, LIMITS.content)
+  assert.throws(() => requireDiaryPayload({ ...base, content: '가'.repeat(LIMITS.content + 1) }), { status: 400 })
+
+  assert.throws(() => requireEmail('a'.repeat(190) + '@b.cd'), { status: 400 })
+  assert.throws(() => requirePassword('a'.repeat(LIMITS.password + 1)), { status: 400 })
+
+  assert.equal(requireContent('댓글', '댓글', LIMITS.comment), '댓글')
+  assert.throws(() => requireContent('가'.repeat(LIMITS.comment + 1), '댓글', LIMITS.comment), {
+    status: 400,
+    message: '댓글은 1,000자 이하여야 합니다.',
+  })
 })

@@ -659,6 +659,55 @@ import '@/css/components/BaseButton.css'
 
 이 프로젝트가 쓰는 분기점: `600px`(모바일), `1023px`(태블릿 — 사이드바가 덮개로 바뀜).
 
+**3) 숨기는 것과 없애는 것을 구분한다**
+
+좁은 화면에서 자리가 모자라면 `display: none` 으로 숨기고 싶어진다. 숨기기 전에 **"이것을 숨기면 못 하게 되는 일이 있는가?"** 를 묻는다.
+
+이 프로젝트의 헤더는 720px 이하에서 닉네임을 숨겼는데, 그 닉네임이 마이페이지로 가는 **유일한 링크**였다.
+휴대폰에서는 닉네임과 비밀번호를 바꿀 방법이 아예 없었다. → [11 버그 사례집](11-bug-casebook.md) 사례 3
+
+```css
+/* ✗ 링크째로 숨긴다 → 기능이 사라진다 */
+@media (max-width: 720px) {
+  .header__user { display: none; }
+}
+
+/* ✓ 글자만 숨기고, 같은 링크를 아이콘으로 남긴다 */
+.header__user-icon { display: none; }
+
+@media (max-width: 720px) {
+  .header__user-name { display: none; }
+  .header__user-icon { display: inline; }
+}
+```
+
+**4) 넘칠 수 있는 줄은 "어디가 줄어들지" 를 정해 둔다**
+
+`flex` 로 한 줄에 늘어놓은 것들의 합이 화면보다 넓으면 **페이지 전체에 가로 스크롤**이 생긴다.
+메뉴가 하나 늘거나(관리자 메뉴) 화면이 더 좁아지면(320px) 언제든 일어난다.
+
+```css
+@media (max-width: 720px) {
+  .header__nav {
+    flex: 0 1 auto;      /* 줄어들어도 된다 */
+    min-width: 0;        /* flex 자식은 기본적으로 내용보다 작아지지 않는다. 이 줄이 있어야 줄어든다 */
+    overflow-x: auto;    /* 넘치면 메뉴 "안에서만" 옆으로 넘긴다 */
+  }
+  .header__logo,
+  .header__actions {
+    flex: 0 0 auto;      /* 로고와 버튼은 줄어들지 않는다 */
+  }
+}
+```
+
+`min-width: 0` 은 반응형에서 가장 자주 빠뜨리는 한 줄이다. "분명히 줄어들라고 했는데 안 줄어든다" 면 이것부터 확인한다.
+
+**확인하는 법** — 개발자 도구 휴대폰 모드에서 375px, 320px 로 바꿔 보고, Console 에 아래를 붙여 넣는다. `true` 가 나와야 한다.
+
+```js
+document.documentElement.scrollWidth <= window.innerWidth
+```
+
 **④ 레이아웃은 flex 와 grid 로**
 
 ```css
@@ -821,6 +870,19 @@ const layout = computed(() => layouts[route.meta.layout] || DefaultLayout)
 로그인/회원가입/404 는 가운데에 카드를 놓는 `AuthLayout`,
 나머지는 헤더 + 사이드바가 있는 `DefaultLayout` 을 쓴다.
 
+> **함정 — 라우터가 준비되기 전에 화면을 그리면 안 된다**
+> 위 코드에서 `route.meta.layout` 이 없으면 `DefaultLayout` 을 쓴다. 그런데 앱이 켜지는 순간,
+> 라우터가 첫 주소를 확인(로그인 검사 포함)하기 **전**에는 `route.meta` 가 비어 있다.
+> 그래서 비회원이 접속해도 아주 잠깐 `DefaultLayout` 이 그려지고, 그 안의 캘린더가 서버에 요청을 보내 401 이 났다.
+>
+> ```js
+> // main.js
+> app.mount('#app')                                   // ✗ 라우터를 기다리지 않는다
+> router.isReady().then(() => app.mount('#app'))      // ✓ 첫 이동이 끝난 뒤에 그린다
+> ```
+>
+> 화면에 안 보일 만큼 짧은 순간이라도 **그려진 컴포넌트는 코드를 실행한다.** → [11 버그 사례집](11-bug-casebook.md) 사례 6
+
 **`meta` 는 가드 말고 다른 용도로도 쓴다.** 로그인 화면은 옆에 서비스 소개(`IntroPanel`)를
 함께 보여 줘야 해서 더 넓은 폭이 필요하다. 그래서 라우트에 `meta.wide` 를 두고
 `AuthLayout` 이 그 값을 읽어 클래스를 바꾼다.
@@ -969,14 +1031,46 @@ async function run(task) {
   }
 }
 
-async function fetchMine() {
+async function create(payload) {
   return run(async () => {
-    const { items: list } = await diaryApi.listMine({ ...filters })
-    items.value = list
-    return list
+    const { diary } = await diaryApi.create(payload)
+    return diary
   })
 }
 ```
+
+**다시 던질 것인가, 여기서 끝낼 것인가** — `run` 은 오류를 `error` 에 담고 **다시 던진다.**
+저장·수정처럼 화면이 `await` 로 결과를 기다리는 작업은, 화면이 실패를 알아야 하기 때문이다(이동하지 않기, 폼 위에 문구 표시).
+
+하지만 **목록 불러오기는 화면이 기다리지 않고 부르기만 한다.**
+
+```js
+// DiaryListView.vue
+watch(selectedDate, (value) => {
+  diaryStore.applyFilter({ dateKey: value })
+  diaryStore.fetchMine()          // await 도 catch 도 없다
+})
+```
+
+여기서 오류를 다시 던지면 받을 사람이 없어서 콘솔에 `Uncaught (in promise)` 가 남는다. 그래서 목록용은 따로 둔다.
+
+```js
+/** 목록 불러오기 - 실패하면 화면의 error 문구로만 알린다. (다시 던지지 않는다) */
+async function runList(reload) {
+  try {
+    return await run(reload)
+  } catch {
+    return []
+  }
+}
+
+function fetchMine() {
+  return runList(mine.reload)     // mine 은 3-3 의 usePagedList
+}
+```
+
+> **규칙: 오류는 한 번만, 책임질 수 있는 곳에서 처리한다.** 다시 던지려면 받을 곳이 있어야 한다.
+> `async` 함수를 `await` 없이 부르는 곳을 볼 때마다 "실패하면 누가 처리하지?" 를 확인한다. → [11 버그 사례집](11-bug-casebook.md) 사례 7
 
 **여러 목록의 정합성 맞추기 — 낙관적 동기화**
 
@@ -1605,9 +1699,14 @@ const formatted = computed(() => formatDate(diary.createdAt))
 ```css
 .card { position: relative; }
 .card__link::after { content: ''; position: absolute; inset: 0; }  /* 링크가 카드 전체를 덮는다 */
-.card__like { position: relative; z-index: 1; }                    /* 버튼은 그 위로 올린다 */
+.card__like,
+.card .nickname-link { position: relative; z-index: 1; }           /* 따로 눌려야 하는 것은 그 위로 올린다 */
 .card:has(.card__link:focus-visible) { outline: 2px solid var(--color-primary); }
 ```
+
+> **고친 뒤에는 주변을 다시 본다.** 처음에는 좋아요 버튼만 위로 올렸다. 그런데 카드 안에는 작성자 닉네임(마이페이지로 가는 링크)도 있었다.
+> 닉네임이 투명한 막 아래에 깔려서, 닉네임을 눌러도 글 상세로 갔다. 눈으로 봐서는 알 수 없고 **눌러 봐야** 아는 종류의 버그다.
+> "카드 전체를 덮는 링크" 를 만들었다면 카드 안에서 따로 눌려야 하는 것을 **전부** 세어 본다. → [11 버그 사례집](11-bug-casebook.md) 사례 4
 
 **사례 ② — 모달** ([BaseModal.vue](../frontend/src/components/common/BaseModal.vue))
 

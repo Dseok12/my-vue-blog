@@ -90,6 +90,9 @@ async function onReport(payload) {
       <p v-if="isHidden && isMine" class="detail__notice">
         신고가 접수되어 이 글은 다른 회원에게 가려진 상태입니다. 관리자 검토 후 해제될 수 있습니다.
       </p>
+      <p v-else-if="isHidden" class="detail__notice">
+        신고로 가림 처리된 글입니다. 관리자 검토를 위해 표시됩니다.
+      </p>
 
       <article class="detail__paper">
         <DiaryMeta :diary="current" :show-author="!isMine" />

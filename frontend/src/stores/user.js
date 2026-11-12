@@ -57,6 +57,15 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  /** 삭제한 글을 마이페이지 목록에서도 뺀다. (stores/diary.js 의 remove 가 부른다) */
+  function removeDiary(id) {
+    const before = diaries.value.length
+    diaries.value = diaries.value.filter((item) => item.id !== id)
+    if (profile.value && diaries.value.length < before) {
+      profile.value.diaryCount = Math.max(0, profile.value.diaryCount - 1)
+    }
+  }
+
   /** 프로필 화면에서 닉네임이 바뀌면 표시값도 맞춘다. */
   function patchProfileNickname(nickname) {
     if (profile.value) profile.value.nickname = nickname
@@ -73,6 +82,7 @@ export const useUserStore = defineStore('user', () => {
     reset,
     fetchProfile,
     fetchDiaries,
+    removeDiary,
     patchProfileNickname,
   }
 })

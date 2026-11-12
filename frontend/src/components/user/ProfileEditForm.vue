@@ -33,6 +33,8 @@ const errors = reactive({
 
 function toggle() {
   open.value = !open.value
+  // 로그인 화면 등에서 남은 예전 오류 문구가 폼 위에 보이지 않게 지운다.
+  authStore.resetError()
   if (open.value) {
     form.nickname = props.currentNickname
     form.currentPassword = ''

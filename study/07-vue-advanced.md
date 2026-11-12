@@ -384,12 +384,117 @@ expect(wrapper.emitted('update:modelValue')).toEqual([['2026-08-15']])
 > 원인은 템플릿 맨 위의 **HTML 주석** 때문에 루트가 두 개(fragment)가 된 것이었다.
 > 눈으로는 절대 못 찾는 버그를 테스트가 찾았다.
 
-### 6-5. 과제
+### 6-5. 실제 브라우저로 테스트하기 (E2E)
+
+Vitest 의 컴포넌트 테스트는 가짜 DOM(jsdom)에서 돈다. 빠르지만 **CSS 를 계산하지 않고, 화면을 그리지 않는다.**
+그래서 이런 버그는 절대 잡지 못한다.
+
+| 버그 | 왜 jsdom 으로는 못 잡나 |
+| --- | --- |
+| 닉네임 위에 투명한 링크가 덮여 있어 엉뚱한 곳으로 이동 | 무엇이 무엇을 덮는지는 CSS 를 그려 봐야 안다 |
+| 휴대폰에서 마이페이지 링크가 `display: none` | 미디어 쿼리를 적용하지 않는다 |
+| 375px 에서 가로 스크롤 | 레이아웃 크기를 계산하지 않는다 |
+| 비회원 첫 접속에 401 요청 | 라우터·레이아웃·실제 요청이 함께 움직여야 드러난다 |
+
+네 가지 모두 **이 프로젝트에서 E2E 로 처음 발견한 실제 버그**다. ([11 버그 사례집](11-bug-casebook.md) 사례 3, 4, 6)
+
+**Playwright** 는 진짜 브라우저(Chromium)를 코드로 조종한다. 사람이 하듯 누르고, 입력하고, 기다린다.
+
+```bash
+mkdir e2e && cd e2e
+npm init -y
+npm install playwright
+npx playwright install chromium     # 테스트용 브라우저를 내려받는다 (한 번만)
+```
+
+```js
+// e2e/smoke.mjs — 프론트(3000)와 백엔드(4000)를 켜 둔 상태에서:  node smoke.mjs
+import { chromium } from 'playwright'
+
+const BASE = 'http://localhost:3000'
+const problems = []
+
+const browser = await chromium.launch()
+const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+
+// ① 테스트하는 동안 콘솔 오류, 처리 안 된 예외, 실패한 요청을 전부 모은다
+page.on('console', (msg) => {
+  if (['error', 'warning'].includes(msg.type())) problems.push('console: ' + msg.text())
+})
+page.on('pageerror', (error) => problems.push('pageerror: ' + error.message))
+page.on('response', (res) => {
+  if (res.status() >= 400) problems.push(res.status() + ' ' + res.url())
+})
+
+// ② 비회원은 로그인 화면으로 간다
+await page.goto(BASE + '/')
+await page.waitForURL(/\/login/)
+
+// ③ 로그인
+await page.locator('input[type="email"]').fill('demo@diary.test')
+await page.locator('input[type="password"]').fill('demo1234')
+await page.getByRole('button', { name: '로그인', exact: true }).click()
+await page.waitForURL(BASE + '/')
+
+// ④ 글 쓰기
+await page.getByRole('button', { name: '글쓰기' }).click()
+await page.locator('input[placeholder="오늘을 한 줄로 표현한다면?"]').fill('E2E 로 쓴 글')
+await page.locator('textarea.field__control--textarea').fill('브라우저가 대신 썼다.')
+await page.getByRole('button', { name: '저장하기' }).click()
+await page.locator('.detail__title', { hasText: 'E2E 로 쓴 글' }).waitFor()
+
+// ⑤ 삭제 — 확인 모달이 뜨고, 누르면 목록으로 돌아간다
+await page.getByRole('button', { name: '삭제' }).click()
+await page.locator('.modal__actions .btn--danger').click()
+await page.waitForURL(BASE + '/')
+
+// ⑥ 휴대폰 크기에서 가로 스크롤이 없는가
+await page.setViewportSize({ width: 375, height: 700 })
+const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+if (!fits) problems.push('375px 에서 가로 스크롤 발생')
+
+await browser.close()
+console.log(problems.length ? problems.join('\n') : '문제 없음')
+process.exit(problems.length ? 1 : 0)
+```
+
+**요소를 고르는 법 — 사용자가 보는 것으로 고른다**
+
+| 방법 | 예 | 언제 |
+| --- | --- | --- |
+| 역할 + 이름 (가장 좋다) | `getByRole('button', { name: '저장하기' })` | 버튼, 링크, 제목. **접근성이 좋은 화면일수록 테스트하기도 쉽다** |
+| 라벨 | `getByLabel('이메일')` | 입력창 |
+| 글자 | `locator('.card', { hasText: '오늘의 기록' })` | 목록에서 특정 항목 |
+| CSS 선택자 | `locator('.detail__title')` | 위 방법으로 안 될 때. BEM 클래스는 잘 바뀌지 않아 쓸 만하다 |
+
+**기다리는 법** — `waitForTimeout(1000)` 처럼 **시간으로 기다리지 않는다.** 느린 컴퓨터에서는 실패하고 빠른 컴퓨터에서는 낭비다.
+"무엇이 나타날 때까지" 로 기다린다: `waitForURL(...)`, `locator(...).waitFor()`, `waitForFunction(...)`.
+
+**이 프로젝트를 검증한 시나리오 (29단계)** — 직접 써 볼 때 목록으로 삼는다.
+
+```
+회원 A   비회원 → 로그인 화면 · 가입 · 글 작성 · 좋아요 켜기/끄기 · 댓글/답글/삭제
+        작성 중 이탈 경고(취소하면 남고, 확인하면 떠난다) · 더 보기(13건 → 10 + 3, 중복 없음)
+        필터/검색 · 캘린더 토글과 날짜 선택(주소에 반영) · 수정/삭제(모달 포커스, ESC)
+회원 B   피드에서 A 의 닉네임이 가려져 보인다 · 카드의 좋아요는 이동하지 않는다
+        카드의 닉네임 → 마이페이지 · 마이페이지 카드의 좋아요 숫자 · 남의 글 수정 주소 차단
+        신고 → 피드에서 사라짐 · 프로필 닉네임 변경 · 로그인 만료 → 로그인 화면 → 복귀
+관리자   신고 목록에서 가림 해제 · 일반 회원은 /admin 차단 · 없는 주소는 404
+모바일   375px 에서 목록/피드/상세/작성/마이페이지/관리자/로그인/회원가입 가로 스크롤 없음
+전체     콘솔 오류 0 · 처리 안 된 예외 0 · 예상하지 못한 4xx/5xx 응답 0
+```
+
+> **E2E 는 느리고 깨지기 쉽다.** 그래서 "가장 중요한 흐름 몇 개" 만 둔다. 규칙 하나하나는 단위 테스트로,
+> SQL 은 통합 테스트([06 5-4](06-backend.md))로, 화면 전체의 연결은 E2E 로 — 각자 잡을 수 있는 버그가 다르다.
+> 여러 테스트를 관리하려면 `@playwright/test`(테스트 러너, 자동 재시도, 실패 화면 캡처)를 쓴다.
+
+### 6-6. 과제
 
 1. `utils/diary.js` 의 `summarize`, `getMoodLabel` 테스트를 쓴다
-2. `stores/diary.js` 의 `remove` 가 목록과 `total` 을 함께 줄이는지 테스트한다 (`vi.mock('@/api')`)
+2. `stores/diary.js` 의 `report` 가 목록에서 글을 빼고 상세를 `isHidden: true` 로 바꾸는지 테스트한다 ([diary.test.js](../frontend/src/stores/diary.test.js) 에 이어서)
 3. `BaseModal` 이 열리면 ESC 로 `cancel` 을 emit 하고, `loading` 중에는 emit 하지 않는지 테스트한다
-4. (도전) **Playwright** 로 "로그인 → 글 작성 → 목록에서 확인 → 삭제" 전체 흐름을 실제 브라우저로 테스트한다
+4. 위 `smoke.mjs` 를 직접 돌려 보고, "댓글을 쓰고 지운다" 단계를 추가한다
+5. (도전) `DiaryCard.css` 에서 `.card .nickname-link` 규칙을 지운 뒤, 그 버그를 잡는 E2E 단계를 쓴다 (피드에서 닉네임을 누르면 주소가 `/users/...` 가 되어야 한다)
 
 ---
 

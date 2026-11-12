@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 
 import BaseButton from '@/components/common/BaseButton.vue'
+import { COMMENT_MAX_LENGTH } from '@/config'
 import '@/css/components/CommentForm.css'
 
 defineProps({
@@ -36,6 +37,7 @@ defineExpose({ reset })
       class="comment-form__input"
       :placeholder="placeholder"
       :aria-label="placeholder"
+      :maxlength="COMMENT_MAX_LENGTH"
     ></textarea>
     <div class="comment-form__actions">
       <BaseButton v-if="reply" size="sm" variant="ghost" @click="emit('cancel')">취소</BaseButton>

@@ -1,15 +1,22 @@
 /** 폼 검증 헬퍼 - 모든 함수는 오류 메시지(문자열) 또는 빈 문자열을 반환한다. */
+import { CONTENT_MAX_LENGTH, PASSWORD_MAX_LENGTH } from '@/config'
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
 export function validateEmail(value) {
-  if (!value) return '이메일을 입력해 주세요.'
-  if (!EMAIL_PATTERN.test(value)) return '이메일 형식이 올바르지 않습니다.'
+  // 복사해 붙이면서 딸려 온 앞뒤 공백은 무시한다. (서버도 공백을 지우고 저장한다)
+  const email = String(value || '').trim()
+  if (!email) return '이메일을 입력해 주세요.'
+  if (!EMAIL_PATTERN.test(email)) return '이메일 형식이 올바르지 않습니다.'
   return ''
 }
 
 export function validatePassword(value) {
   if (!value) return '비밀번호를 입력해 주세요.'
   if (value.length < 8) return '비밀번호는 8자 이상이어야 합니다.'
+  if (value.length > PASSWORD_MAX_LENGTH) {
+    return '비밀번호는 ' + PASSWORD_MAX_LENGTH + '자 이하여야 합니다.'
+  }
   return ''
 }
 
@@ -34,6 +41,9 @@ export function validateTitle(value) {
 
 export function validateContent(value) {
   if (!value || !value.trim()) return '내용을 입력해 주세요.'
+  if (value.trim().length > CONTENT_MAX_LENGTH) {
+    return '내용은 ' + CONTENT_MAX_LENGTH.toLocaleString('ko-KR') + '자 이하여야 합니다.'
+  }
   return ''
 }
 

@@ -108,6 +108,7 @@ npm run build         # 빌드 경고 없음 확인
 # backend
 npm run lint          # ESLint
 npm test              # node --test - DB 없이 실행되는 테스트
+npm run test:db       # 실제 MySQL 로 API 전체 흐름 확인 (테스트용 DB 를 만들고 끝나면 지운다)
 ```
 
 ---

@@ -13,7 +13,7 @@ import { ApiError } from '../../utils/ApiError.js'
 import { toIso } from '../../utils/date.js'
 import { displayNickname } from '../../utils/nickname.js'
 import { newId } from '../../utils/id.js'
-import { requireContent } from '../../utils/validate.js'
+import { LIMITS, requireContent } from '../../utils/validate.js'
 
 const SELECT_COMMENT = `
   SELECT c.id, c.diary_id, c.parent_id, c.author_id, c.content, c.created_at,
@@ -79,16 +79,20 @@ export async function create(viewer, diaryId, body = {}) {
     throw ApiError.badRequest('가림 처리된 글에는 댓글을 쓸 수 없습니다.')
   }
 
-  const content = requireContent(body.content, '댓글')
-  const parentId = body.parentId ? String(body.parentId) : null
+  const content = requireContent(body.content, '댓글', LIMITS.comment)
+  let parentId = body.parentId ? String(body.parentId) : null
 
   if (parentId) {
     // 대댓글은 같은 글에 달린 댓글에만 달 수 있다.
-    const parent = await queryOne('SELECT id FROM comments WHERE id = ? AND diary_id = ?', [
-      parentId,
-      diaryId,
-    ])
+    const parent = await queryOne(
+      'SELECT id, parent_id FROM comments WHERE id = ? AND diary_id = ?',
+      [parentId, diaryId],
+    )
     if (!parent) throw ApiError.notFound('원본 댓글을 찾을 수 없습니다.')
+
+    // 대댓글에 다시 답글을 달면 같은 단계로 묶는다. (댓글 - 대댓글 2단계만 유지)
+    // 3단계가 되면 화면의 댓글 트리에 나타나지 않는 댓글이 생긴다.
+    if (parent.parent_id) parentId = parent.parent_id
   }
 
   const id = newId()

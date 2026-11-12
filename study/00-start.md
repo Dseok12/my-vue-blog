@@ -174,6 +174,38 @@ git --version
 - `↑` 키 — 이전 명령 다시 불러오기
 - `Ctrl + C` — 실행 중인 프로그램 멈추기 (개발 서버 끌 때)
 
+### 터미널에서 꼭 알아야 할 세 가지 상황
+
+**① 명령을 쳤는데 프롬프트가 돌아오지 않는다 — 고장이 아니다**
+
+```bash
+npm run dev
+#   VITE v8  ready in 300 ms
+#   ➜  Local:   http://localhost:3000/
+#   (여기서 커서만 깜빡인다)
+```
+
+개발 서버는 **켜져 있는 동안 계속 실행 중**이다. 이 터미널은 서버가 쓰고 있으니 그대로 두고,
+다른 명령은 **새 터미널**(VS Code 터미널 창의 `+`)에서 친다. 서버를 끄려면 그 터미널에서 `Ctrl + C`.
+
+**② 터미널 창을 그냥 닫으면 서버가 남을 수 있다**
+
+창만 닫으면 서버가 뒤에서 계속 돌 때가 있다. 다음에 켤 때 `Port 3000 is already in use` 가 나온다.
+**항상 `Ctrl + C` 로 끈다.** 이미 남았다면 → [10 오류 사전 2장](10-error-dictionary.md) "포트를 쓰는 프로세스 찾기".
+
+**③ 지금 어느 폴더에 있는지가 전부다**
+
+같은 `npm run dev` 라도 `frontend/` 에서 치면 화면 서버가, `backend/` 에서 치면 API 서버가 켜진다.
+엉뚱한 폴더에서 치면 `Missing script: "dev"` 나 `Could not read package.json` 이 나온다.
+명령이 안 될 때 **가장 먼저 `pwd`** 를 친다.
+
+```
+my-vue-blog/          ← 저장소 루트. 여기서는 npm 명령을 치지 않는다 (package.json 이 없다)
+├─ frontend/          ← cd frontend 후  npm install, npm run dev, npm test
+├─ backend/           ← cd backend  후  npm install, npm run dev, npm test
+└─ study/             ← 지금 읽고 있는 교재
+```
+
 ---
 
 ## 0-6. 첫 웹 페이지
@@ -291,6 +323,66 @@ git merge feat/login         # 실험이 성공했으면 합치기
 ```
 
 이 저장소도 기능마다 브랜치를 만들어 작업한다 (`feat/backend-api` 같은 이름).
+
+### 협업 흐름 — 브랜치에서 작업하고 PR 로 합치기
+
+혼자 하는 프로젝트라도 이 흐름으로 연습해 둔다. 회사에서는 전부 이렇게 한다.
+
+```
+ main ──●──────────────●────────────────●──►   항상 "동작하는 상태"
+         \                              ↑
+          ●──●──●  feat/login ──► PR ──┘        작업은 브랜치에서, 합칠 때는 PR 로
+```
+
+```bash
+# ① 시작하기 전에 항상 최신 main 을 받는다  ← 가장 많이 빼먹고, 가장 비싼 대가를 치르는 단계
+git switch main
+git pull
+
+# ② 새 브랜치를 만든다 (이름: 종류/내용)
+git switch -c feat/dark-mode
+
+# ③ 작업하고 커밋한다 (여러 번)
+git add .
+git commit -m "다크 모드 색상 토큰 추가"
+
+# ④ GitHub 에 올린다 (처음 한 번은 -u)
+git push -u origin feat/dark-mode
+
+# ⑤ GitHub 에서 "Compare & pull request" → 설명을 쓰고 Create pull request
+# ⑥ 내용을 확인하고 "Merge pull request" → "Delete branch"
+
+# ⑦ 내 컴퓨터도 정리한다
+git switch main
+git pull
+git branch -d feat/dark-mode
+```
+
+**브랜치 이름의 관례**
+
+| 접두사 | 뜻 | 예 |
+| --- | --- | --- |
+| `feat/` | 새 기능 | `feat/dark-mode` |
+| `fix/` | 버그 수정 | `fix/login-redirect` |
+| `docs/` | 문서만 | `docs/readme` |
+| `refactor/` | 동작은 그대로, 구조만 | `refactor/api-layer` |
+
+**PR(Pull Request)** 은 "내 브랜치를 main 에 합쳐 주세요" 라는 요청이다. 합치기 전에 바뀐 내용을 한 화면에서 훑어보고,
+자동 검사(lint, test)를 돌리고, 다른 사람의 의견을 받는 자리다. 혼자여도 **합치기 전에 내 변경을 한 번 다시 읽는 습관**이 생긴다.
+
+> **PR 에 "This branch has conflicts" 가 뜬다면** ① 을 건너뛴 것이다. 오래된 지점에서 브랜치를 만들어서,
+> 그사이 main 에 쌓인 변경과 부딪혔다. 이 저장소도 실제로 겪었다 → [11 버그 사례집](11-bug-casebook.md) 사례 18.
+> 충돌을 푸는 법과 되돌리는 법은 [10 오류 사전 3장](10-error-dictionary.md).
+
+### 실수했을 때 — 가장 자주 쓰는 되돌리기 3가지
+
+```bash
+git restore index.html           # 저장한 수정을 버리고 마지막 커밋 상태로 (수정이 사라진다!)
+git restore --staged index.html  # git add 한 것만 취소 (수정은 남는다)
+git commit --amend -m "새 메시지" # 방금 한 커밋의 메시지 고치기 (push 하기 전에만)
+```
+
+Git 의 좋은 점은 **커밋한 것은 거의 항상 되찾을 수 있다**는 것이다. 그래서 자주 커밋한다. 커밋하지 않은 수정만 진짜로 사라진다.
 
 ---
 

@@ -212,6 +212,40 @@ for (const n of [1, 2, 3, 4, 5]) {
 
 > **무한 반복 주의**: `while` 의 조건이 영원히 참이면 프로그램이 멈춘다. 터미널에서 `Ctrl + C` 로 끈다.
 
+### 코드를 손으로 따라가기 — 추적 표
+
+**코드를 읽는다는 것은 머릿속에서 실행해 본다는 뜻이다.** 처음에는 머리로 안 되니 표를 그린다.
+한 줄 실행할 때마다 변수의 값을 적는다. 반복문이 이해가 안 될 때 이 방법이 가장 확실하다.
+
+```js
+let total = 0
+for (let i = 1; i <= 4; i += 1) {
+  if (i % 2 === 0) continue      // 짝수는 건너뛴다
+  total += i
+}
+console.log(total)
+```
+
+| 바퀴 | i | `i % 2 === 0` | 한 일 | total |
+| --- | --- | --- | --- | --- |
+| 시작 | — | — | — | 0 |
+| 1 | 1 | false | `total += 1` | 1 |
+| 2 | 2 | true | `continue` (아래 줄을 건너뜀) | 1 |
+| 3 | 3 | false | `total += 3` | 4 |
+| 4 | 4 | true | `continue` | 4 |
+| 끝 | 5 | `5 <= 4` 가 false → 반복 종료 | | **4** |
+
+출력은 `4` 다. **예상과 실행 결과가 다르면, 표의 어느 칸에서 내 생각이 틀렸는지 찾는다.** 그 칸이 내가 오해하고 있던 부분이다.
+
+같은 일을 컴퓨터에게 시킬 수도 있다 — 값을 찍어 보는 것이다.
+
+```js
+for (let i = 1; i <= 4; i += 1) {
+  console.log({ i, total })      // 객체로 감싸면 이름이 같이 찍힌다 → { i: 1, total: 0 }
+  ...
+}
+```
+
 ---
 
 ## 3-6. 함수 — 일을 묶어 이름 붙이기
@@ -366,7 +400,26 @@ const result = items
 
 [api/mock/index.js](../frontend/src/api/mock/index.js) 의 `listMine` 을 열어서 이 패턴을 찾아보자.
 
-### 연습 문제 (답은 직접 실행해서 확인)
+### 무엇을 쓸지 고르는 법
+
+| 하고 싶은 것 | 메서드 | 결과 |
+| --- | --- | --- |
+| 조건에 맞는 것**들**을 고른다 | `filter` | 배열 (0개일 수도 있다) |
+| 조건에 맞는 것 **하나**를 찾는다 | `find` | 요소 하나 또는 `undefined` |
+| 모든 요소를 **변환**한다 | `map` | 같은 길이의 배열 |
+| 있는지 **여부**만 안다 | `some` / `includes` | `true` / `false` |
+| **전부** 조건에 맞는지 | `every` | `true` / `false` |
+| **하나의 값**으로 합친다 (합계, 개수, 객체) | `reduce` | 무엇이든 |
+| 그냥 하나씩 **실행**만 한다 (출력, 저장) | `forEach` 또는 `for...of` | 없음 |
+
+> **`forEach` 로 새 배열을 만들고 있다면 `map` 이나 `filter` 를 쓸 자리다.**
+> ```js
+> const titles = []
+> items.forEach((item) => titles.push(item.title))   // 동작은 하지만
+> const titles = items.map((item) => item.title)     // 이쪽이 "무엇을 하는지" 가 바로 읽힌다
+> ```
+
+### 연습 문제 (먼저 풀고 → [정답과 해설](12-answers.md))
 
 ```js
 const scores = [72, 95, 48, 88, 100, 61]
@@ -412,6 +465,55 @@ text.length                 // 10
 [utils/image.js](../frontend/src/utils/image.js) 의 `getExtension` 을 읽어 보자. 여기서 배운 것만으로 되어 있다.
 
 ---
+
+### 숫자, 날짜, JSON — 자주 쓰는 내장 도구
+
+```js
+// 숫자
+Math.round(4.5)                  // 5   반올림
+Math.floor(4.9)                  // 4   내림
+Math.ceil(4.1)                   // 5   올림
+Math.max(3, 9, 2)                // 9   (배열이면 Math.max(...list))
+;(1234.5678).toFixed(2)          // '1234.57'  ← 결과는 "문자열"
+;(1234567).toLocaleString('ko-KR') // '1,234,567'  천 단위 쉼표
+
+// 문자열 → 숫자
+Number('42')                     // 42
+Number('12px')                   // NaN   숫자가 아닌 글자가 섞이면 NaN
+parseInt('12px', 10)             // 12    앞에서부터 숫자인 데까지만 읽는다
+Number('')                       // 0     ← 빈 입력창이 0 이 된다. 검증할 때 주의!
+typeof NaN                       // 'number'  (NaN 은 "숫자가 아님" 인데 타입은 number)
+Number.isNaN(Number('abc'))      // true  NaN 인지 확인할 때는 이것을 쓴다 (NaN === NaN 은 false)
+```
+
+> **소수 계산의 함정**
+> ```js
+> 0.1 + 0.2            // 0.30000000000000004
+> 0.1 + 0.2 === 0.3    // false
+> ```
+> 컴퓨터는 소수를 2진수로 저장해서 아주 작은 오차가 생긴다. 그래서 **돈은 소수로 계산하지 않는다.**
+> 원 단위 정수로 저장하고(1,500원 → `1500`), 달러처럼 소수가 필요하면 가장 작은 단위(센트)의 정수로 바꿔 계산한다.
+> ([08 가계부 설계](08-build-any-project.md) 에서 금액을 `INT` 로 정한 이유)
+
+```js
+// 날짜 — Date 객체는 "어느 한 순간" 을 담는다
+const now = new Date()                              // 지금
+const d = new Date('2026-08-30T15:30:00+09:00')     // 한국 시간 8월 30일 오후 3시 30분
+d.toISOString()                  // '2026-08-30T06:30:00.000Z'  ← UTC(세계 표준시)로는 9시간 전
+d.getTime()                      // 1788071400000  1970년부터 흐른 밀리초 (두 시각의 차이를 구할 때)
+Date.now() - d.getTime()         // 그때부터 지금까지 지난 밀리초
+```
+
+**같은 순간이 나라마다 다른 날짜다.** 한국의 8월 30일 오전 0시 30분은 UTC 로는 8월 29일이다.
+이 프로젝트가 "날짜는 한국 시간 기준" 이라는 규칙을 [utils/date.js](../frontend/src/utils/date.js) 한 곳에 모아 둔 이유다.
+날짜 계산을 화면 여기저기에 직접 쓰면 반드시 하루씩 어긋나는 버그가 생긴다.
+
+```js
+// JSON — 객체를 문자열로, 문자열을 객체로 (서버 통신과 localStorage 에서 쓴다)
+JSON.stringify({ a: 1, b: [1, 2], c: undefined })   // '{"a":1,"b":[1,2]}'  ← undefined 는 빠진다
+JSON.parse('{"a":1}').a                             // 1
+JSON.parse('{a:1}')                                 // SyntaxError — JSON 은 키에 큰따옴표가 필수다
+```
 
 ## 3-11. 구조 분해와 펼침 — 짧게 꺼내고 복사하기
 
@@ -656,6 +758,34 @@ function summarize(content, length = 20) {
 - `isValid(errors)` — `{ email: '', password: '8자 이상...' }` 같은 객체에 메시지가 하나도 없으면 `true`
 
 완성하면 [frontend/src/utils/validators.js](../frontend/src/utils/validators.js) 와 비교한다.
+
+세 실습의 풀이와 해설은 [12 정답과 해설](12-answers.md) 에 있다. **먼저 혼자 풀고, 20분을 고민해도 안 될 때만** 본다.
+
+### 실습 ④ 내 코드를 테스트로 확인하기 (맛보기)
+
+"잘 되는 것 같다" 를 "잘 된다" 로 바꾸는 방법이 테스트다. Node 에는 테스트 도구가 들어 있다.
+
+```js
+// validators.test.js
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import { validateNickname } from './validators.js'
+
+test('닉네임은 2~12자', () => {
+  assert.equal(validateNickname('데모'), '')            // 문제가 없으면 빈 문자열
+  assert.notEqual(validateNickname('한'), '')           // 1자는 오류 메시지
+  assert.notEqual(validateNickname('가'.repeat(13)), '') // 13자도 오류 메시지
+  assert.equal(validateNickname(' 데모 '), '')          // 앞뒤 공백은 무시
+})
+```
+
+```bash
+node --test          # 이름이 .test.js 로 끝나는 파일을 찾아 실행한다
+```
+
+마지막 줄(`' 데모 '`)에서 실패했다면 `trim()` 을 빠뜨린 것이다. **테스트는 내가 놓친 경우를 대신 확인해 준다.**
+이 프로젝트의 백엔드 테스트([backend/test/](../backend/test/validate.test.js))가 정확히 이 방식이다.
 
 ---
 

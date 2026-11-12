@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { formatBytes, getExtension, validateImageFile } from './image'
 import {
   isValid,
+  validateContent,
   validateEmail,
   validateNickname,
   validatePassword,
@@ -66,5 +67,19 @@ describe('이미지 검증 - 10MB, jpg/jpeg/png/gif/webp', () => {
     expect(getExtension('photo.final.PNG')).toBe('png')
     expect(getExtension('noext')).toBe('')
     expect(formatBytes(10 * 1024 * 1024)).toBe('10.0MB')
+  })
+})
+
+describe('입력 실수에 대한 배려와 길이 제한', () => {
+  it('이메일 앞뒤 공백은 오류로 보지 않는다', () => {
+    expect(validateEmail('  demo@diary.test ')).toBe('')
+    expect(validateEmail('   ')).not.toBe('')
+  })
+
+  it('내용 20,000자, 비밀번호 72자까지', () => {
+    expect(validateContent('가'.repeat(20000))).toBe('')
+    expect(validateContent('가'.repeat(20001))).toBe('내용은 20,000자 이하여야 합니다.')
+    expect(validatePassword('a'.repeat(72))).toBe('')
+    expect(validatePassword('a'.repeat(73))).not.toBe('')
   })
 })

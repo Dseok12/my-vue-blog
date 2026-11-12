@@ -410,11 +410,11 @@ export async function toggleLike(viewer, id) {
   if (liked) {
     await execute('DELETE FROM diary_likes WHERE diary_id = ? AND user_id = ?', [id, viewer.id])
   } else {
-    await execute('INSERT INTO diary_likes (diary_id, user_id, created_at) VALUES (?, ?, ?)', [
-      id,
-      viewer.id,
-      new Date(),
-    ])
+    // IGNORE: 버튼을 아주 빠르게 두 번 눌러 같은 요청이 겹쳐도 오류 없이 한 번만 저장된다.
+    await execute(
+      'INSERT IGNORE INTO diary_likes (diary_id, user_id, created_at) VALUES (?, ?, ?)',
+      [id, viewer.id, new Date()],
+    )
   }
 
   const row = await queryOne('SELECT COUNT(*) AS count FROM diary_likes WHERE diary_id = ?', [id])
