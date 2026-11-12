@@ -16,6 +16,11 @@ export const IMAGE_ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp']
 export const IMAGE_ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 export const IMAGE_MAX_COUNT = 5
 
+/** 글자 수 제한 - 백엔드 utils/validate.js 의 LIMITS 와 같은 값 */
+export const CONTENT_MAX_LENGTH = 20000
+export const COMMENT_MAX_LENGTH = 1000
+export const PASSWORD_MAX_LENGTH = 72
+
 /** 다이어리 종류 - 일기 / 독서기록 / 감정기록 */
 export const DIARY_CATEGORIES = [
   { value: 'diary', label: '일기' },

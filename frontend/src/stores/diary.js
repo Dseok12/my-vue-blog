@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 
 import { diaries as diaryApi, reports as reportApi } from '@/api'
 import { usePagedList } from '@/composables/usePagedList'
+import { useUserStore } from '@/stores/user'
 import { parseDateKey, todayKey } from '@/utils/date'
 
 /** 한 번에 불러오는 글 개수 ("더 보기" 한 번에 늘어나는 개수) */
@@ -46,7 +47,10 @@ export const useDiaryStore = defineStore('diary', () => {
     Object.assign(filters, createFilters())
   }
 
-  /** 목록/상세에 있는 같은 글의 좋아요·댓글 수를 함께 맞춘다. */
+  /**
+   * 목록/상세에 있는 같은 글의 좋아요·댓글 수를 함께 맞춘다.
+   * 같은 글이 내 목록 / 피드 / 상세 / 마이페이지에 동시에 떠 있을 수 있다.
+   */
   function syncDiary(id, patch) {
     const update = (list) => {
       const target = list.find((item) => item.id === id)
@@ -54,6 +58,7 @@ export const useDiaryStore = defineStore('diary', () => {
     }
     update(mine.items.value)
     update(feed.items.value)
+    update(useUserStore().diaries)
     if (current.value?.id === id) Object.assign(current.value, patch)
   }
 
@@ -71,13 +76,26 @@ export const useDiaryStore = defineStore('diary', () => {
     }
   }
 
+  /**
+   * 목록 불러오기 - 실패하면 화면의 error 문구로만 알린다. (다시 던지지 않는다)
+   * 화면은 결과를 기다리지 않고 부르기만 하므로, 여기서 던지면 아무도 잡지 않는
+   * 오류(Unhandled Promise Rejection)가 콘솔에 남는다.
+   */
+  async function runList(reload) {
+    try {
+      return await run(reload)
+    } catch {
+      return []
+    }
+  }
+
   /** 첫 페이지부터 다시 불러온다. (필터가 바뀌었을 때) */
   function fetchMine() {
-    return run(mine.reload)
+    return runList(mine.reload)
   }
 
   function fetchFeed() {
-    return run(feed.reload)
+    return runList(feed.reload)
   }
 
   /** 다음 페이지를 이어 붙인다. 오류는 화면에서 토스트로 보여 준다. */
@@ -134,6 +152,7 @@ export const useDiaryStore = defineStore('diary', () => {
       await diaryApi.remove(id)
       mine.removeItem(id)
       feed.removeItem(id)
+      useUserStore().removeDiary(id)
       if (current.value?.id === id) current.value = null
     })
   }

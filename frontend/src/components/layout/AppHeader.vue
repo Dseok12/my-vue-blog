@@ -51,15 +51,22 @@ async function onLogout() {
       </nav>
 
       <div class="header__actions">
+        <!-- 좁은 화면에서는 이름을 숨기고 아이콘만 남긴다. (마이페이지로 가는 길은 항상 있어야 한다) -->
         <router-link
           v-if="authStore.user"
           class="header__user"
           :to="{ name: 'user-page', params: { id: authStore.user.id } }"
+          :aria-label="'마이페이지 (' + authStore.nickname + ')'"
         >
-          {{ authStore.nickname }} 님
+          <span class="header__user-icon" aria-hidden="true">👤</span>
+          <span class="header__user-name">{{ authStore.nickname }} 님</span>
         </router-link>
         <BaseButton size="sm" @click="router.push({ name: 'diary-create' })">글쓰기</BaseButton>
-        <BaseButton size="sm" variant="ghost" @click="onLogout">로그아웃</BaseButton>
+        <!-- 아주 좁은 화면에서는 글자 대신 아이콘만 보인다. (aria-label 이 있어 스크린리더는 그대로 읽는다) -->
+        <BaseButton size="sm" variant="ghost" aria-label="로그아웃" @click="onLogout">
+          <span class="header__logout-icon" aria-hidden="true">🚪</span>
+          <span class="header__logout-text">로그아웃</span>
+        </BaseButton>
       </div>
     </div>
   </header>

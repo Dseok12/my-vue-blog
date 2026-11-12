@@ -11,6 +11,9 @@ import { requireEmail, requireNickname, requirePassword } from '../../utils/vali
 
 export const SALT_ROUNDS = 10
 
+/** 없는 계정으로 로그인할 때 비교에 쓰는 가짜 해시. (어떤 비밀번호와도 맞지 않는다) */
+const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', SALT_ROUNDS)
+
 export function hashPassword(plain) {
   return bcrypt.hash(plain, SALT_ROUNDS)
 }
@@ -64,7 +67,9 @@ export async function login(body = {}) {
   )
 
   // 이메일이 없을 때와 비밀번호가 틀릴 때의 응답을 같게 해서 계정 존재 여부를 숨긴다.
-  const matched = row ? await bcrypt.compare(password, row.password_hash) : false
+  // 응답 "시간"도 같아야 하므로, 계정이 없어도 가짜 해시와 비교해 같은 만큼 시간을 쓴다.
+  const matched = await bcrypt.compare(password, row ? row.password_hash : DUMMY_HASH)
+  if (!row) throw ApiError.unauthorized('이메일 또는 비밀번호가 올바르지 않습니다.')
   if (!matched) throw ApiError.unauthorized('이메일 또는 비밀번호가 올바르지 않습니다.')
 
   return { user: toPublicUser(row), token: createToken(row.id) }

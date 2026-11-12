@@ -28,8 +28,13 @@ export function errorHandler(error, req, res, next) {
     normalized = fromMulterError(error)
   } else if (error?.type === 'entity.parse.failed' || error instanceof SyntaxError) {
     normalized = new ApiError('요청 형식이 올바르지 않습니다.', 400)
+  } else if (error?.type === 'entity.too.large') {
+    normalized = new ApiError('요청 크기가 너무 큽니다.', 413)
   } else if (error?.code === 'ER_DUP_ENTRY') {
     normalized = new ApiError('이미 등록된 값입니다.', 409)
+  } else if (error?.code === 'ER_DATA_TOO_LONG') {
+    // 검증(utils/validate.js)에서 걸러야 하지만, 놓친 경우에도 500 이 아니라 400 으로 알려 준다.
+    normalized = new ApiError('입력한 내용이 너무 깁니다.', 400)
   }
 
   const status = normalized instanceof ApiError ? normalized.status : 500

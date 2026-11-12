@@ -28,7 +28,7 @@ function serializeReport(row) {
   }
 }
 
-/** 신고 목록 (기본: 처리 대기 중) */
+/** 신고 목록 - status 를 주면 그 상태만, 없으면 전체 (화면의 기본 탭은 처리 대기) */
 export async function listReports(params = {}) {
   const status = REPORT_STATUSES.includes(params.status) ? params.status : null
   const where = status ? ' WHERE r.status = ?' : ''

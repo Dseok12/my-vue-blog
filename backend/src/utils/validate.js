@@ -23,6 +23,20 @@ export const REPORT_REASONS = [
   'etc',
 ]
 
+/**
+ * 길이 제한 - DB 컬럼 크기에 맞춘다. (schema.sql)
+ * 검증 없이 긴 값을 넣으면 DB 가 "Data too long" 오류를 내고 500 이 된다.
+ * 사용자의 실수는 500(서버 잘못)이 아니라 400(요청 잘못)으로 알려 줘야 한다.
+ */
+export const LIMITS = {
+  email: 191, // users.email VARCHAR(191)
+  password: 72, // bcrypt 는 72바이트까지만 비교에 쓴다
+  title: 60, // diaries.title VARCHAR(60)
+  // TEXT 는 65,535 바이트. 한글 한 글자가 3바이트이므로 20,000자면 안전하다.
+  content: 20000,
+  comment: 1000,
+}
+
 function asString(value) {
   return typeof value === 'string' ? value : ''
 }
@@ -31,6 +45,7 @@ export function requireEmail(value) {
   const email = asString(value).trim().toLowerCase()
   if (!email) throw ApiError.badRequest('이메일을 입력해 주세요.')
   if (!EMAIL_PATTERN.test(email)) throw ApiError.badRequest('이메일 형식이 올바르지 않습니다.')
+  if (email.length > LIMITS.email) throw ApiError.badRequest('이메일이 너무 깁니다.')
   return email
 }
 
@@ -38,6 +53,9 @@ export function requirePassword(value) {
   const password = asString(value)
   if (!password) throw ApiError.badRequest('비밀번호를 입력해 주세요.')
   if (password.length < 8) throw ApiError.badRequest('비밀번호는 8자 이상이어야 합니다.')
+  if (password.length > LIMITS.password) {
+    throw ApiError.badRequest('비밀번호는 ' + LIMITS.password + '자 이하여야 합니다.')
+  }
   return password
 }
 
@@ -49,9 +67,13 @@ export function requireNickname(value) {
   return nickname
 }
 
-export function requireContent(value, label = '내용') {
+/** 글 내용 / 댓글처럼 "비면 안 되고 너무 길어도 안 되는" 글자 */
+export function requireContent(value, label = '내용', maxLength = LIMITS.content) {
   const content = asString(value).trim()
   if (!content) throw ApiError.badRequest(label + '을 입력해 주세요.')
+  if (content.length > maxLength) {
+    throw ApiError.badRequest(label + '은 ' + maxLength.toLocaleString('ko-KR') + '자 이하여야 합니다.')
+  }
   return content
 }
 
@@ -59,7 +81,9 @@ export function requireContent(value, label = '내용') {
 export function requireDiaryPayload(body = {}) {
   const title = asString(body.title).trim()
   if (!title) throw ApiError.badRequest('제목을 입력해 주세요.')
-  if (title.length > 60) throw ApiError.badRequest('제목은 60자 이하여야 합니다.')
+  if (title.length > LIMITS.title) {
+    throw ApiError.badRequest('제목은 ' + LIMITS.title + '자 이하여야 합니다.')
+  }
 
   const content = requireContent(body.content)
 

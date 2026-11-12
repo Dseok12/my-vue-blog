@@ -29,4 +29,7 @@ onUnauthorized(() => {
   router.push({ name: 'login', query: { redirect: router.currentRoute.value.fullPath } })
 })
 
-app.mount('#app')
+// 라우터가 첫 주소를 확인(로그인 검사 포함)한 뒤에 화면을 그린다.
+// 먼저 그리면 로그인 화면 대신 기본 레이아웃이 잠깐 나타나고,
+// 비회원인데도 캘린더가 서버에 요청을 보내 401 이 난다.
+router.isReady().then(() => app.mount('#app'))

@@ -51,6 +51,7 @@ npm run dev          # 개발 실행 (파일 저장 시 자동 재시작)
 | `npm run db:reset` | `--fresh` 후 예시 데이터까지 한 번에 |
 | `npm run lint` | ESLint - 실수하기 쉬운 코드 찾기 |
 | `npm test` | `node --test` - `test/*.test.js` 실행 (DB 없이 동작) |
+| `npm run test:db` | 실제 MySQL 로 API 전체 흐름 확인 - `test-db/*.test.js`. `<DB_NAME>_test` DB 를 만들어 쓰고 끝나면 지운다 (개발 데이터는 건드리지 않음) |
 
 ### 예시 계정
 
@@ -102,7 +103,8 @@ backend/
 │  │  └─ uploads/            이미지 업로드
 │  ├─ routes/index.js        /api 아래 라우터 모음
 │  └─ utils/                 공통 도구 (검증 / 날짜 / 오류 / id / 페이지네이션 / 업로드 파일)
-├─ test/                     자동 테스트 (npm test)
+├─ test/                     자동 테스트 (npm test) - DB 없이 실행
+├─ test-db/                  통합 테스트 (npm run test:db) - 실제 MySQL 사용
 └─ uploads/                  업로드된 이미지 저장 폴더
 ```
 
@@ -217,3 +219,16 @@ Express 5 는 `async` 함수에서 발생한 오류를 자동으로 에러 핸�
 
 - 글을 수정하며 뺀 이미지, 삭제한 글의 이미지는 **더 이상 어떤 글에서도 쓰지 않으면** 파일도 지웁니다.
   (파일 정리에 실패해도 요청 자체는 성공으로 처리하고 로그만 남깁니다)
+
+---
+
+## 8. 문제가 생겼을 때
+
+| 증상 | 원인 | 해결 |
+| --- | --- | --- |
+| 실행하자마자 `테이블 구조가 현재 코드와 맞지 않습니다` | `.env` 의 `DB_NAME` 이 예전 버전이 만든 DB 를 가리킨다 | `DB_NAME` 을 새 이름으로 바꾸고 `npm run db:migrate` (데이터를 지워도 되면 `npm run db:reset`) |
+| `데이터베이스에 연결하지 못했습니다` | MySQL 이 꺼져 있거나 계정 정보가 다르다 | MySQL 실행 확인, `.env` 의 `DB_USER` / `DB_PASSWORD` 확인 |
+| 화면에 `서버에서 문제가 발생했습니다` | 서버가 예상하지 못한 오류(500) | 백엔드 터미널의 `[error]` 줄을 본다. 개발 모드에서는 응답의 `detail` 에도 원인이 담긴다 |
+| `Port 4000 is already in use` (`EADDRINUSE`) | 이미 실행 중인 서버가 있다 | 다른 터미널의 서버를 `Ctrl + C` 로 끄거나, 작업 관리자에서 `node.exe` 종료 |
+| 로그인하면 `로그인 시도가 너무 많습니다` (429) | 15분에 20번 제한에 걸렸다 | 잠시 기다리거나, 개발 중이면 서버를 재시작 (기록은 메모리에 있다) |
+| 화면에서 `서버에 연결할 수 없습니다` | 백엔드가 꺼져 있다 | `npm run dev` 로 백엔드를 켠다. 백엔드 없이 보려면 `frontend/.env` 의 `VITE_USE_MOCK=true` |
